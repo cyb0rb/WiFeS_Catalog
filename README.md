@@ -1,1 +1,3 @@
-# WiFeS_Catalog
+# WiFeS Catalog
+
+Catalog of sky positions for the WiFeS spectrograph
