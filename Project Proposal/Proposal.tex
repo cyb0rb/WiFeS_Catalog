@@ -1,10 +1,12 @@
-\documentclass{article}
+\documentclass[11pt]{article}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{graphicx}
 \usepackage[a4paper, margin=1in]{geometry}
+\setlength{\parindent}{0pt}
 \usepackage{biblatex}
 \addbibresource{references.bib}
+\usepackage{hyperref}
 
 \title{%
     \huge A Catalogue of Sky Positions for WiFeS \\
@@ -18,15 +20,35 @@
 
 [insert introduction text here] \\
 
-\section {Background}
+\section{Background}
+\subsection{The ANU 2.3m Telescope and WiFeS Instrument}
+The Wide-Field Spectrograph (WiFeS) was installed on the ANU 2.3m Telescope at Siding Spring Observatory in 2009. It is an integral field, image slicing spectrograph with a field of view of 25 x 38 arcseconds, that records a spectrum for each pixel in a particular imaged region and then produces a 3D data cube (with two spatial dimensions and one spectral dimension) \cite{dopita_wide_2007}.  In March 2023, changes were made to the ANU 2.3m Telescope in order to allow for the transition to fully autonomous observations with some requirements of the new system including autonomous queue scheduling and rapid override for Target of Opportunity (ToO) observations [2]. \\
+
+However, for observing modes including the nod and shuffle mode, the even in the autonomous scheduling observations  in order to allow fo rthe full automation of the 2.3m telescope in whin order to make the observation process 
+\subsection{Dark Sky Catalogues}
 
 \section{Aims}
 
 \section{Methodology}
+\subsection{Image Acquisition and Processing}
+using resampled image - post-processed to account for any recalibration, standardised 
+need zero points to convert between threshold and magnitude 
+\subsection{Source Extraction}
+\subsection{Dark Sky Identification}
+
+\section{Troubleshooting and Contingencies}
+\subsection{Software Dependencies}
+\subsection{From Raw Images to Processed Data}
 
 \section{Research Applications}
 
 \section{Timeline and Contributions}
+At the time of submitting this proposal, we have commenced the initial stages of extracting dark sky regions from survey images. Our approach has been to begin stepping through the methodology outlined above for a single DECam image, before compiling software that would catalogue the entire sky. As such, we have already queried an initial DECam image and are in the process of running source extraction to generate its segmentation map. Our goal is to have the first segmentation map by the end of the first week of the internship (31/01/25). \\
+
+From here, we plan on conducting the next steps in parallel, dividing contributions as follows. Cyrus will continue our efforts with the first sky image to identify its dark sky regions from its segmentation map. We aim to have this completed by the end of the second week of the internship, at the latest, to allow time for integrating dark sky identification into the main software. Meanwhile, Vernica will begin work on software automation of the query process. By the end of the second week (07/02/25), we aim to have all sky images from DECam in a state where their segmentation maps can be extracted. \\
+
+- analysis of all images together, program for dark sky id (final Friday) \\
+- stretch: run program and get catalogue 
 
 \printbibliography
 
