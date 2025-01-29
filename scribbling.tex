@@ -5,6 +5,12 @@
 \begin{document}
 \section{DECAM Information}
 From the DECam Imager Handbook: \newline
+\begin{figure}[hbt!]
+    \centering
+    \includegraphics[width=0.5\linewidth]{Decam Characteristics.png}
+    \caption{DECam Characteristics}
+    \label{fig:enter-label}
+\end{figure}
 DECam has a three square degree field of view (2.2 degrees wide). It images at a resolution of 0.263 arcseconds per pixel. In particular, 0.2637 arcsec/pixel (center), 0.2626 arcsec/pixel (edge).  0.2637/0.2626 (arcsec/unbinned pixel). S Large focal plane array with a close to circular array of 62 CCDs and a total of 520 million pixels. 
 \newline 
 CCD Array Characteristics:
@@ -14,6 +20,19 @@ Array Dimensions:
     Axis 2: 4096 pixels
 \newline
 Pixel Size: \SI{15}{\micro\metre}
+
+We are looking to use \textbf{resampled} images that have a zero-point associated with them. In the astro data archive, this corresponds to files with the process type (\texttt{proc_type}) of \texttt{resampled}, and the presence of the \texttt{MAGZERO} and/or \texttt{MAGZPT} fields.
+
+\texttt{MAGZERO} data field: The (astronomical) magnitude corresponding to a single photon count in the image. This is located in the \textit{Extension} headers of the FITS files, present in Level 2 data products (single, reduced exposures). (From the DECam data handbook)\\
+
+\section{Declination Range of the 2.3m Telescope}
+\href{https://www.cambridge.org/core/journals/publications-of-the-astronomical-society-of-australia/article/anu-wifes-supernova-programme-awsnap/1DF292200162D34D6E5A268CE18C3653} {Physical Pointing Limit of the 2.3m}
+\begin{figure}[hbt!]
+    \centering
+    \includegraphics[width=0.5\linewidth]{image.png}
+    \caption{Enter Caption}
+    \label{fig:enter-label}
+\end{figure}
 
 \begin{figure}
     \centering
