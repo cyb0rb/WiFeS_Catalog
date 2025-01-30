@@ -4,7 +4,7 @@
 \usepackage{graphicx}
 \usepackage[a4paper, margin=1in]{geometry}
 \setlength{\parindent}{0pt}
-\usepackage{biblatex}
+\usepackage[style=phys]{biblatex}
 \addbibresource{references.bib}
 \usepackage{hyperref}
 
@@ -15,43 +15,51 @@
 \date{Summer 2025}
 
 \begin{document}
-
 \maketitle
 
-[insert introduction text here] \\
+\section{Aims}
+The primary goal of this project is to create a program capable of generating a full catalogue of allowed ``Dark Sky" positions customised to the sky coverage, field of view, and limiting magnitude of the ANU 2.3m Telescope. The software will generate the catalogue of positions in RA/DEC based on images from DR10 of the DESI Legacy Imaging Survey, queried from the NOIRLab Astro Data Lab, and processed in Python with SEP (Python library for Source Extraction and Photometry)\cite{bertin_sextractor_1996}\cite{barbary_sep_2016}.\\
+
+The stretch goal of this project is to run the software and generate the full catalogue of sky positions across the entire viewing range of the ANU 2.3m. 
 
 \section{Background}
-\subsection{The ANU 2.3m Telescope and WiFeS Instrument}
-The Wide-Field Spectrograph (WiFeS) was installed on the ANU 2.3m Telescope at Siding Spring Observatory in 2009. It is an integral field, image slicing spectrograph with a field of view of 25 x 38 arcseconds, that records a spectrum for each pixel in a particular imaged region and then produces a 3D data cube (with two spatial dimensions and one spectral dimension) \cite{dopita_wide_2007}.  In March 2023, changes were made to the ANU 2.3m Telescope in order to allow for the transition to fully autonomous observations with some requirements of the new system including autonomous queue scheduling and rapid override for Target of Opportunity (ToO) observations \cite{price_converting_2024}. \\
 
-However, for observing modes including the nod and shuffle mode, the observer is required to select a dark sky position within a complex polygon area of the object to be observed. The telescope then shifts between observing the object and observing the dark sky for a given exposure time, shuffling the charge back and forth during exposures until at the end of the observation, the CCD array can be read out. This data can then be used to do sky subtraction which helps to improve the accuracy of the object signal recorded. Thus, in order for the full automation of the 2.3m telescope, the process of selecting a dark sky position, given the Right Ascension (RA) and Declination (DEC) of the object, also has to be automated. This can be done by producing a catalogue of dark sky positions. 
+The Wide-Field Spectrograph (WiFeS) is an integral field, image-slicing spectrograph with a field of view of $25''\times38''$ mounted on the ANU 2.3m telescope. It records a spectrum for each pixel in a particular imaged region, producing a 3D data cube with two spatial dimensions and one spectral dimension \cite{dopita_wide_2007}.  In 2023, the 2.3m transitioned to fully autonomous observations, with key changes of the new system including autonomous queue scheduling and rapid override for Target of Opportunity (ToO) observations \cite{price_converting_2024}. \\
 
-
-\section{Aims}
-The primary aim of this project is to create a software that would link a given object, from its RA and DEC coordinates, to its associated dark sky position. This will be customised for the ANU 2.3m telescope field of view, but the software will be written as such that it could be easily amended to suit other automated telescope systems. \\
-
-As a stretch goal, we may also then apply our software to generate a full catalogue of sky positions, ideally covering as much of the southern sky within the reach of the 2.3m as possible. This would involve iterating our software through the entire DECam image database, finding all associated dark regions for targets in the entire sky.
+Locating associated dark sky positions alongside targets is required for sky subtraction, a crucial method that improves signal quality. In the nod and shuffle mode of the 2.3m, the telescope shifts between observing the object and observing the dark sky for a given exposure time, shuffling the charge back and forth during exposures. While this process is automated, observers are still required to manually find and select the initial dark sky position within a complex polygon area of the target \cite{dopita_wide_2007}. Thus, for the full automation of the 2.3m, the process of selecting a dark sky position from RA and DEC must also be automated. This can be done by producing a catalogue of dark sky positions. 
 
 \section{Methodology}
+
 \subsection{Image Acquisition and Processing}
-using resampled image - post-processed to account for any recalibration, standardised 
-need zero points to convert between threshold and magnitude 
+
+Images will be sourced from Data Release 10 of the DESI Legacy Imaging Survey, which combines observations from the Beijing-Arizona Sky Survey (BASS), DECam Legacy Survey (DECaLS), Mayall z-band Legacy Survey (MzLS), and additional public DECam data to span a majority of the ANU 2.3m sky coverage. This survey excludes the Galactic Plane, corresponding to $|b|<18 ^\circ$ in Galactic Coordinates, but this limitation is negligible due to the low probability of acceptable dark sky positions in that region to begin with. These image files will be queried through the NOIRLab Astro Data Lab and Archive where possible. \\
+
+The Legacy Survey image stacks are FITS files that have been calibrated and pre-processed into ``bricks" of consistent size ($0.25^\circ\times 0.25^\circ$), tangent-plane coordinate projection, and pixel scale (0.262 arcseconds per pixel). All pixel values in the images are given in units of ``nanomaggies" that can be converted to other quantities for source extraction thresholds.
+
 \subsection{Source Extraction}
+Extracting sources from a given image to identify exclusion zones from dark sky regions can be done using the SEP Python library. Dark sky regions are defined as any point with $m_{\text{AB},g}\geq21$, as this gives the optimal balance between the telescope limiting magnitude \cite{dopita_observing_nodate} and the depth and coverage of DESI DR10. This translates to an object detection ``threshold'', whereby SEP designates all points brighter than the associated pixel count for the magnitude limit with an integer value and the remaining ``dark'' points with a zero value. This combination of zeros and integers forms the segmentation map of telescope field-of-view exclusion zones.
+
 \subsection{Dark Sky Identification}
+Given the 2.3m FOV of $25''\times38''$, a $40''$ radius exclusion zone is defined around each identified object on the segmentation map, to provide ample buffer such that the FOV centred in any remaining point in the sky would be wholly comprised of dark sky. \\
+
+We recognise, however, that this could lead to a large volume of potential dark sky positions closely packed in over a small area, compromising our goal of holistic scope over the entire sky. Therefore, we will implement grid-based target selection, whereby each image is divided into $40''$ grid squares and only sections void of any exclusion zones will be accepted as dark sky positions. Potential dark sky areas on the edges of images will be captured in the significant overlap between images of neighbouring regions.
 
 \section{Troubleshooting and Contingencies}
-\subsection{Software Dependencies}
-\subsection{From Raw Images to Processed Data}
+Our main approach to addressing contingencies in this project is to prioritise creating a minimum viable product capable of returning the dark sky positions within a single queried image, given a particular RA/DEC input. Thus, if obstacles are encountered that prevent the completion of the entire scope of the project, the software can be expanded upon and completed in the future. This will be enabled through the development of documentation detailing our methods and intended outcome, to ensure that others will be able to complete, build upon, and use the software in the future. \\
+
+The areas with the most complexity are the ones most likely to cause difficulties: effective use of image querying for both sky coverage and performance, generalising accurate image processing to any possible queried images, translating image magnitudes to accurate source-extraction thresholds, and creating a reliable algorithm for separating continuous dark sky regions into discrete catalogue positions. Contingencies and troubleshooting methods will vary, but will generally aim for fewer, higher confidence catalogue positions than many, low confidence positions. For example, if reliable source extraction thresholds are unable to be implemented, we can intentionally add more ``padding" to the exclusion zones that are detected. Fewer positions will be generated overall, but there will be greater confidence that those selected are appropriate options for dark sky positions. 
 
 \section{Research Applications}
+Catalogues play an important role in the continued advancement of the understanding of the universe, not only through their use in telescope automation (using a dark sky catalogue), but particularly through their contributions to improvements in the precision of measurements of positions, proper motions and parallaxes of objects as well as an increase in the number of objects able to be surveyed \cite{kopeikin_science_2021}.  \\
+\\
+Whilst the aim of this project is to produce software and a corresponding catalogue of dark sky positions that can be used for the automation of the 2.3m telescope, this will also have the ability to be extended on and made compatible for use by other telescopes with differing fields of view, sky coverage and limiting magnitudes, ultimately expanding their research capabilities.
 
 \section{Timeline and Contributions}
-At the time of submitting this proposal, we have commenced the initial stages of extracting dark sky regions from survey images. Our approach has been to begin stepping through the methodology outlined above for a single DECam image, before compiling software that would catalogue the entire sky. As such, we have already queried an initial DECam image and are in the process of running source extraction to generate its segmentation map. Our goal is to have the first segmentation map by the end of the first week of the internship (31/01/25). \\
+Significant progress has already been made towards achieving our aims. We have begun working with a single DECam image to ascertain dark sky positions, with the intent of eventually expanding our approach to the entire survey database. A segmentation map, identifying exclusion zones for dark sky regions, has been produced and our goal is to have charted the dark sky positions in this image by the end of the first week (31/01/25). \\
 
-From here, we plan on conducting the next steps in parallel, dividing contributions as follows. Cyrus will continue our efforts with the first sky image to identify its dark sky regions from its segmentation map. We aim to have this completed by the end of the second week of the internship, at the latest, to allow time for integrating dark sky identification into the main software. Meanwhile, Vernica will begin work on software automation of the query process. By the end of the second week (07/02/25), we aim to have all sky images from DECam in a state where their segmentation maps can be extracted. \\
+Streamlining the above process for a greater volume of images has several components which we will conduct in parallel, dividing contributions as follows. Cyrus will assess the DESI database to understand the nature of the available data and identify a querying pattern that would produce whole sky coverage. Alannah will simultaneously work on the software aspect of querying, developing an automated method to implement the querying pattern to prepare data for source extraction. The source extraction to dark sky identification algorithm will be finalised by Vernica, who will write software to produce dark sky maps from individual queried images. We aim to have these steps completed by the end of the second week (07/02/25). \\
 
-- analysis of all images together, program for dark sky id (final Friday) \\
-- stretch: run program and get catalogue 
+The final week will comprise stitching all of our contributions together, in terms of synthesising software and collating dark sky regions from individual images to create a holistic dark sky map. Our end goal is to have catalogued a $5\times5$ square degree section, and if time allows, to achieve our stretch goal of cataloguing the entire sky coverage of the 2.3m telescope.
 
 \printbibliography
 

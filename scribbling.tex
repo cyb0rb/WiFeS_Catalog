@@ -21,7 +21,10 @@ Array Dimensions:
 \newline
 Pixel Size: \SI{15}{\micro\metre}
 
-We are looking to use \textbf{resampled} images that have a zero-point associated with them. In the astro data archive, this corresponds to files with the process type (\texttt{proc_type}) of \texttt{resampled}, and the presence of the \texttt{MAGZERO} and/or \texttt{MAGZPT} fields.
+
+We are looking to use \textbf{resampled} images that have a zero-point associated with them. In the astro data archive, this corresponds to files with the process type (\texttt{proc\_type}) of \texttt{resampled}, and the presence of the \texttt{MAGZERO} and\/or \texttt{MAGZPT} fields.
+
+\textbf{Maggie:} Linear flux units, where an object with an AB magnitude of 0 has a flux of 1.0 maggie. A convenient unit is the nanomaggie: a flux of 1 nanomaggie corresponds to an AB magnitude of 22.5.
 
 \texttt{MAGZERO} data field: The (astronomical) magnitude corresponding to a single photon count in the image. This is located in the \textit{Extension} headers of the FITS files, present in Level 2 data products (single, reduced exposures). (From the DECam data handbook)\\
 
@@ -35,6 +38,11 @@ We are looking to use \textbf{resampled} images that have a zero-point associate
 \end{figure}
 
 \href{https://datalab.noirlab.edu/skymapper.php#:~:text=SMSS%20published%20its%20Fourth%20Data,observed%20up%20to%20%2B28%C2%B0.} {Sky Mapper Coverage}
+
+\\
+\\
+Notes from Proposal\\
+go for volume, ample padding in exclusion zones rather than extreme accuracy (we are ok with generating less positions that are definitely good
 
   \section{link dump}
 
@@ -58,4 +66,12 @@ We are looking to use \textbf{resampled} images that have a zero-point associate
   \href{https://des.ncsa.illinois.edu/releases/other}{DES Data Management}
 
   \href{https://aus01.safelinks.protection.outlook.com/?url=https}{2.3m projects}
+
+
+\section{Word Dump}
+
+As a stretch goal, we may also then apply our software to generate a full catalogue of sky positions, ideally covering as much of the southern sky within the reach of the 2.3m as possible. This would involve iterating our software through the DESI Legacy Imaging Survey database which is a combintaion of the DECam Legacy Survey, the Beijing-Arizona Sky Survey, and the Mayall z-band Legacy Survey, finding all associated dark regions for targets in the entire sky.
+
+The decision to start simple by just trying to complete the querying, source extractor and dark sky identification process for a single image was made taking into consideration potential contingencies throughout the internship and thus, if a final software and catalogue can not be produced for a range of queried images, it can at least be done for one which can be expanded upon. 
+
 \end{document}
