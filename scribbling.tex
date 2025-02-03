@@ -77,4 +77,8 @@ The decision to start simple by just trying to complete the querying, source ext
 Range of the 2.3m Telescope is across all RA and for DEC$<$30 degrees. 
 Thus, only images from the Legacy Survey dr10 $<$30 degrees in declination will be considered.
 
+\section{Threshold Calculation}
+Firstly, the background noise level of the image ($\sigma_g_b)$ was extracted using bkg= sep.Background() followed by bkg.globalrms(). Moreover, the zero-point magnitude of the image was extracted from the header using image.header['MAGZERO'] which is 22.5 for the Legacy Survey DR10 images. \\
+\\Finally, the threshold value could be calculated by using the equation, mab=ZeroMag-2.5*log10(flux), 
+which provides a conversion between linear fluxes (in nanomaggies) and magnitudes.  
 \end{document}
