@@ -80,8 +80,7 @@ Thus, only images from the Legacy Survey dr10 $<$30 degrees in declination will 
 \section{Threshold Calculation}
 The threshold value (a) for the source extractor was found using, \begin{equation} a=f/\sigma_{rms} \end{equation}
 where $\sigma_{rms}$ is the background noise level or the global background RMS of the image and f is the pixel flux value in nanomaggies corresponding to a given limiting AB magnitude and zero point. For reference, an object with an AB magnitude of 22.5 has a flux of 1 nanomaggie [Data Release Description Reference].\\
-\\Firstly, the background noise level or the global background RMS of the image ($\sigma_{rms}$) was extracted using bkg= sep.Background() followed by bkg.globalrms(). \\
-\\The flux value (f) was then be calculated as,  \begin{equation} 
+\\Firstly, the background noise level or the global background RMS of the image ($\sigma_{rms}$) was extracted using bkg= sep.Background() followed by bkg.globalrms(). The flux value (f) was then calculated as,  \begin{equation} 
 f=10^{(z-m)/2.5}
 \end{equation} 
 Where m is the limiting (AB) magnitude (21 for this catalogue) and z is the zero point (AB) magnitude of the image (22.5 for the DR10 stacked images). \\
