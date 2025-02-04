@@ -78,7 +78,24 @@ Range of the 2.3m Telescope is across all RA and for DEC$<$30 degrees.
 Thus, only images from the Legacy Survey dr10 $<$30 degrees in declination will be considered.
 
 \section{Threshold Calculation}
-Firstly, the background noise level of the image ($\sigma_g_b$) was extracted using bkg= sep.Background() followed by bkg.globalrms(). Moreover, the zero-point magnitude of the image was extracted from the header using image.header['MAGZERO'] which is 22.5 for the Legacy Survey DR10 images. \\
-\\Finally, the threshold value could be calculated by using the equation, mab=ZeroMag-2.5*log10(flux), 
-which provides a conversion between linear fluxes (in nanomaggies) and magnitudes.  
+The threshold value (a) for the source extractor was found using, \begin{equation} a=f/\sigma_{rms} \end{equation}
+where $\sigma_{rms}$ is the background noise level or the global background RMS of the image and f is the pixel flux value in nanomaggies corresponding to a given limiting AB magnitude and zero point. For reference, an object with an AB magnitude of 22.5 has a flux of 1 nanomaggie [Data Release Description Reference].\\
+\\Firstly, the background noise level or the global background RMS of the image ($\sigma_{rms}$) was extracted using bkg= sep.Background() followed by bkg.globalrms(). \\
+\\The flux value (f) was then be calculated as,  \begin{equation} 
+f=10^{(z-m)/2.5}
+\end{equation} 
+Where m is the limiting (AB) magnitude (21 for this catalogue) and z is the zero point (AB) magnitude of the image (22.5 for the DR10 stacked images). \\
+\\ 
+Substituting the two values into Equation 1 gives the threshold pixel value for detection or the value at which a pixel is classed as belonging to an object and thus, will not considered as a potential dark sky position.
+
+
+ \section{Extras}
+Moreover, the zero-point magnitude of the image was extracted from the header using image.header['MAGZERO'] which is 22.5 for the Legacy Survey DR10 images. This equation can then be rearranged to take in the limiting magnitude (21) and give the threshold pixel flux value at which a pixel with a value above that threshold is identified as belonging to an object and cannot be considered for a dark sky position.  \\
+The threshold value (a) for the source extractor can be found using, \begin{equation} a=f/\sigma_{rms} \end{equation}
+where $\sigma_{ab}$ is the background noise level or the global background RMS of the image and f is the linear flux value in nanomaggies (an object with an AB magnitude 22.5 has a flux of 1 nanomaggie).\\
+\\Firstly, the background noise level or the global background RMS of the image ($\sigma_{rms}$) was extracted using bkg= sep.Background() followed by bkg.globalrms(). \\
+\\The flux value (f) can then be calculated by rearranging the below equation,  \begin{equation} 
+m=z-2.5\times log_{10}(f)
+\end{equation} 
+Where m is the limiting (AB) magnitude (21 for this catalogue), z is the zero point (AB) magnitude of the image (22.5 for the DR10 stacked images) and f is linear flux measured in nanomaggies (an object with an AB magnitude 22.5 has a flux of 1 nanomaggie) [Data Release Description Reference]. This equation can then be rearranged to take in the limiting magnitude (21) and give the threshold pixel flux value at which a pixel with a value above that threshold is identified as belonging to an object and cannot be considered for a dark sky position.
 \end{document}
