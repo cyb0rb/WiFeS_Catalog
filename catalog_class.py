@@ -35,6 +35,14 @@ class SkyCatalogue():
         self.mask_radius = mask_radius
         self.fov = fov
         
+        # load all masked stars
+        print("Loading masked star data....")
+        self.load_mask_data()
+        
+        # define grid stuff
+        print("Defining grid lines...")
+        self.define_grid()
+        
         pass
 
     def query_tractor(self, ra, dec, dist=1.0):
@@ -153,6 +161,12 @@ class SkyCatalogue():
             center = [[star['dec_pix'], star['ra_pix']]]
             
             # make array of indexes
+            # TODO add check of dimension sign to make sure it's not negative
+            # print(star['max_dec_pix'] - star['min_dec_pix'])
+            # print(star['max_ra_pix'] - star['min_ra_pix'])
+            # print(star['min_dec_pix'])
+            # dec_dim = np.abs(star['max_dec_pix'] - star['min_dec_pix'])
+            # ra_dim = np.abs(star['max_ra_pix'] - star['min_ra_pix'])
             chunk = np.indices((star['max_dec_pix'] - star['min_dec_pix'], star['max_ra_pix'] - star['min_ra_pix']))
             
             # adjust indices to correspond to the larger grid
@@ -235,8 +249,21 @@ class SkyCatalogue():
 
         dark_catalogue = pd.DataFrame({'ra':dark_ra, 'dec':dark_dec})
         return dark_catalogue
+    
+    def find_overlapping_extent(ra, dec, all_stars):
+        # grab everything in a 1 degree square
+        print(f"Finding everything within the square RA=({ra}, {ra+1}) and DEC=({dec}, {dec+1})")
+        
+        degree_masks = all_stars.query(f'({ra} < ra < {ra+1}) & ({dec} < dec < {dec+1})')
 
-    def dark_sky_degree(self, ra, dec, catalog_df):
+        min_ra = degree_masks['min_ra'].min()
+        min_dec = degree_masks['min_dec'].min()
+        max_ra = degree_masks['max_ra'].max()
+        max_dec = degree_masks['max_dec'].max()
+        
+        return min_ra, min_dec, max_ra, max_dec
+
+    def create_degree_square(self, ra, dec, catalog_df):
         """Generates dark sky positions for a 1 x 1 degree region of the sky with lower "corner" given by (ra,dec)
         """
         
@@ -259,29 +286,66 @@ class SkyCatalogue():
         print("Converting dark regions to coordinates...")
         dark_catalogue = self.create_data_frame(dark_regions, coords)
         
+        print("Finding overlaps...")
+        overlap = self.find_overlapping_extent(ra, dec, all_stars)
+        
         print("Done!")
-        return dark_catalogue
+        return dark_catalogue, overlap
+    
+    def remove_overlap_positions(self, ra_coords, dec_coords, overlap_store, larger_catalogue):
+        catalogue = larger_catalogue.copy()
+
+        for ra,dec,i in zip(ra_coords,dec_coords,range(len(overlap_store))):
+            for x,y in zip(catalogue['ra'],catalogue['dec']):
+                if x>ra and x<(ra+1):
+                    if (y<=dec and y>=overlap_store[i][1]) or (y>=(dec+1) and y<=overlap_store[i][3]):
+                        j = catalogue[(catalogue.dec == y)].index
+                        catalogue.drop(np.array(j),inplace=True)
+                if y>dec and y<(dec+1):
+                    if (x<=ra and x>overlap_store[i][0]) or (x>=(ra+1) and x<=overlap_store[i][2]):
+                        j = catalogue[(catalogue.ra == x)].index
+                        catalogue.drop(np.array(j),inplace=True)
+                        
+        return catalogue
         
     def create_catalogue(self, ra, dec, query_dist=1.0):
         
-        # load all masked stars
-        print("Loading masked star data....")
-        mask_df = self.load_mask_data()
+        # # load all masked stars
+        # print("Loading masked star data....")
+        # self.load_mask_data()
         
         # query sky for some amount
         print(f"Querying the tractor catalog for stars from RA({ra}, {ra+query_dist}) to DEC({dec}, {dec+query_dist})...")
         query_df = self.query_tractor(ra, dec, query_dist)
         
+        # # define grid stuff
+        # print("Defining grid lines...")
+        # self.define_grid()
+        
         # make array of ra / dec starting points for degree cubes
         dec_range = np.arange(dec, dec+query_dist)
         ra_range = np.arange(ra, ra+query_dist)
         
-        # define grid stuff
-        print("Defining grid lines...")
-        self.define_grid()
+        coord_grid = np.meshgrid(ra_range, dec_range)
+        ra_coords = coord_grid[0].flatten()
+        dec_coords = coord_grid[1].flatten()
+        overlap_store = []
         
-        print("Generating one degree of sky catalog...")
-        degree_catalog = self.dark_sky_degree(ra, dec, query_df)
+        catalogue = self.create_degree_square(ra, dec, query_df)
+        
+        # print("Generating sky catalog...")
+        # for ra_c, dec_c in zip(ra_coords,dec_coords):
+        #     print(f"Generating sky catalog for square RA({ra_c}, {ra_c+1}) DEC({dec_c}, {dec_c+1})..")
+        #     cat, overlap = self.create_degree_square(ra_c, dec_c, query_df)
+        #     larger_catalogue = pd.concat([larger_catalogue,cat],axis=0).reset_index(drop=True)
+        #     overlap_store.append(overlap)
+        #     # print('Added (' + str(ra) + ', ' + str(dec) + ') to catalogue')
+        
+        # print("Removing positions from overlapping regions...")
+        # catalogue = self.remove_overlap_positions(ra_coords, dec_coords, overlap_store, larger_catalogue)
+        
+        
+        # degree_catalog = self.create_degree_square(ra, dec, query_df)
         
         # catalog_list = []
         
@@ -289,4 +353,4 @@ class SkyCatalogue():
         #     for ra_degree in ra_range:
         #         catalog_list.append(self.dark_sky_degree(ra_degree, dec_degree, mask_df, query_df))
         
-        return degree_catalog
+        return catalogue
