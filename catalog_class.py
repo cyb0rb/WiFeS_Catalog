@@ -1,0 +1,292 @@
+import matplotlib.pyplot as plt
+from astropy.io import fits as fits
+
+import pkg_resources
+pkg_resources.require("numpy==1.26.3")
+import numpy as np
+
+from dl import queryClient as qc
+import pandas as pd
+from scipy.spatial import distance_matrix
+
+# timer function
+import functools
+import time
+
+def timer(func):
+    @functools.wraps(func)
+    def wrapper_timer(*args, **kwargs):
+        tic = time.perf_counter()
+        value = func(*args, **kwargs)
+        toc = time.perf_counter()
+        elapsed_time = toc - tic
+        print(f"Elapsed time: {elapsed_time:0.4f} seconds")
+        return value
+    return wrapper_timer
+
+
+class SkyCatalogue():
+    
+    def __init__(self, query_dist=1.0, map_dist=1.0, mask_radius=20, fov=45):
+        
+        self.query_dist = query_dist
+        self.map_dist = map_dist
+        self.dim = int((3600*4) * self.map_dist)
+        self.mask_radius = mask_radius
+        self.fov = fov
+        
+        pass
+
+    def query_tractor(self, ra, dec, dist=1.0):
+        """Queries the Astro Data Lab for the ra, dec and mag_g of the objects within a square of side length (dist).     
+        dist is in degrees
+        """
+        # Bounds of the square we are querying objects for
+        ra_min=ra
+        ra_max = ra + dist
+        dec_min=dec
+        dec_max = dec + dist
+
+        # query = f"""
+        # SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
+        # FROM ls_dr10.tractor_s
+        # WHERE ra >= ({ra_min}) AND ra < ({ra_max})
+        # AND dec >= ({dec_min}) AND dec < ({dec_max})
+        # AND (mag_g<=21 AND mag_g>=16
+        #     OR mag_r<=21 AND mag_r>=16
+        #     OR mag_i<=21 AND mag_i>=16
+        #     OR mag_z<=21 AND mag_z>=16)       
+        # """
+        
+        query = f"""
+        SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
+        FROM ls_dr10.tractor_s
+        WHERE ra >= ({ra_min}) AND ra < ({ra_max})
+        AND dec >= ({dec_min}) AND dec < ({dec_max})
+        AND mag_g<=21 AND mag_g>=16       
+        """
+        
+        # check if this completes successfuly
+        brick_info = qc.query(sql=query, fmt="pandas")
+        return brick_info
+    
+    def load_mask_data(self):
+        """Load all of the mask data files. 
+        Returns a pandas Dataframe with columns 'ra', 'dec', 'radius'
+        """
+
+        all_masks = []
+        for i in range(5):
+            with np.load(f"mask_data_files/mask_data_{i}.npz", mmap_mode='r') as mask_data:
+                mask_array = mask_data['arr_0']
+                mask_array_byteswap = mask_array.byteswap().newbyteorder()
+                masked_stars = pd.DataFrame(mask_array_byteswap)
+                all_masks.append(masked_stars)
+                
+        self.mask_df = pd.concat(all_masks, ignore_index=True)
+    
+    def calculate_mask_radius(self, mag_g):
+        return (self.mask_radius/3600) + 1630./3600. * 1.396**(-mag_g)
+    
+    def combine_data(self, catalog_stars:pd.DataFrame, coords):
+        """Combines the data from masked and catalog stars based on some coordinate range"""
+        # coords = [ra, ra+map_dist, dec, dec+map_dist]
+        
+        # cut masked stars to only use the same area as catalog_stars
+        masked_box = self.mask_df.query('(@coords[0] < ra < @coords[1]) and (@coords[2] < dec < @coords[3])')
+        
+        # apply buffer radius to mask and star data
+        masked_box.loc[:, 'radius'] = masked_box['radius'] + (self.mask_radius / 3600.)
+        # TODO check for nan's / inf
+        catalog_stars['radius'] = self.calculate_mask_radius(catalog_stars['mag_g'])
+        print(catalog_stars['radius'].isna().sum())
+        
+        # remove g mag
+        catalog_stars = catalog_stars.drop('mag_g', axis=1)
+        
+        # combine catalog + mask
+        all_stars = pd.concat([masked_box, catalog_stars]).reset_index(drop=True)
+        return all_stars
+    
+    def create_pixel_columns(self, all_stars:pd.DataFrame, coords):
+        """Creates columns for min and max ra and dec for all stars in the dataframe"""
+        # coords: [ra, ra+map_dist, dec, dec+map_dist]
+        
+        # find max and min ra/dec corresponding to the mask of star
+        all_stars['max_ra'] = all_stars['ra'] + all_stars['radius']
+        all_stars['min_ra'] = all_stars['ra'] - all_stars['radius']
+        all_stars['max_dec'] = all_stars['dec'] + all_stars['radius']
+        all_stars['min_dec'] = all_stars['dec'] - all_stars['radius']
+        
+        # boolean for radii that go above 1-degree integer RA/DEC bounds
+        expression = '(max_ra > ceil(ra)) | (min_ra < floor(ra)) | (max_dec > ceil(dec)) | (min_dec < floor(dec))'
+        all_stars['overlap'] = all_stars.eval(expression)
+        
+        # ra, dec, and radius in pixels
+        # TODO check if off by one is needed?
+        all_stars['ra_pix'] = np.round((all_stars['ra'] - coords[0]) * self.dim).astype(int) - 1
+        all_stars['dec_pix'] = np.round((all_stars['dec'] - coords[2]) * self.dim).astype(int) - 1
+        all_stars['rad_pix'] = np.ceil(all_stars['radius'] * self.dim).astype(int)
+        
+        all_stars['min_ra_pix'] = all_stars['ra_pix'] - all_stars['rad_pix']
+        all_stars['max_ra_pix'] = all_stars['ra_pix'] + all_stars['rad_pix']
+        all_stars['min_dec_pix'] = all_stars['dec_pix'] - all_stars['rad_pix']
+        all_stars['max_dec_pix'] = all_stars['dec_pix'] + all_stars['rad_pix']
+        
+        # set stars outside of map range to that value
+        all_stars.loc[all_stars['min_ra_pix'] < 0, 'min_ra_pix'] = 0
+        all_stars.loc[all_stars['max_ra_pix'] > self.dim, 'max_ra_pix'] = self.dim
+        all_stars.loc[all_stars['min_dec_pix'] < 0, 'min_dec_pix'] = 0
+        all_stars.loc[all_stars['max_dec_pix'] > self.dim, 'max_dec_pix'] = self.dim
+        
+        return all_stars
+    
+    def seg_map(self, star_data:pd.DataFrame):
+        """Creates segementation map of shape (`dim`, `dim`) based on the mask locations and pixel data of `star_data`"""
+
+        array = np.zeros((self.dim, self.dim), dtype=int)
+        array.flatten()
+        
+        for star in star_data.to_dict('records'):
+            
+            # center pixel to determine distance from
+            center = [[star['dec_pix'], star['ra_pix']]]
+            
+            # make array of indexes
+            chunk = np.indices((star['max_dec_pix'] - star['min_dec_pix'], star['max_ra_pix'] - star['min_ra_pix']))
+            
+            # adjust indices to correspond to the larger grid
+            # coord grid is shaped like [ [x1, y1], [x1, y2], ... [x1, yn], [x2, y1], ... [xn, yn] ]
+            coord_grid = np.dstack((chunk[0]+star['min_dec_pix'], chunk[1]+star['min_ra_pix']))
+            coord_grid = np.concatenate(coord_grid, axis=0)
+            
+            # calculate distances of each pixel coordinate to the center pixel
+            distances = distance_matrix(x=coord_grid, y=center)
+
+            # change all values of the segmap array to 0 where distances are < mask radius
+            np.place(array[star['min_dec_pix']:star['max_dec_pix'], star['min_ra_pix']:star['max_ra_pix']], distances < star['rad_pix'], 1)
+
+        array.reshape((self.dim, self.dim))
+        return array
+    
+    def define_grid(self):
+        """Creates gridlines and centers on pixels for the initialized dimension and field of view"""
+        self.gridlines = np.arange(0, self.dim+1, (self.fov/3600 * self.dim))
+        centers = []
+
+        for i in range(len(self.gridlines[:-1])):
+            centers.append(int((self.gridlines[i] + self.gridlines[i+1])/2 + 0.5))
+
+        self.x_cen, self.y_cen = np.meshgrid(centers, centers)
+        return
+    
+    def find_dark_regions(self, segmap):
+
+        dark_regions = []
+
+        for i in range(len(self.gridlines) - 1):
+            for j in range(len(self.gridlines) - 1):
+                x_start, x_end = (self.gridlines[i]).astype(int), (self.gridlines[i + 1]).astype(int)
+                y_start, y_end = (self.gridlines[j]).astype(int), (self.gridlines[j + 1]).astype(int)
+                
+                if np.all(segmap[y_start:y_end, x_start:x_end] == 0):
+                    dark_regions.append([self.x_cen[j, i], self.y_cen[j, i]])
+
+        dr_trans = np.array(dark_regions).transpose()
+
+        return dr_trans, dark_regions
+
+
+    def create_plot(self, array, coords, pix_coords, dr_trans):
+
+        # Creating exclusion map with grid
+        fig = plt.figure(figsize=(8,8))
+        ax = fig.add_subplot(111)
+
+        plt.imshow(array, origin = 'lower', cmap='gray', vmin=0, vmax=1)
+
+        positions = np.linspace(0,self.dim,5)
+        x_labels = np.linspace(coords[0],coords[1],5)
+        y_labels = np.linspace(coords[2],coords[3],5)
+
+        ax.set_xticks(positions, x_labels)
+        ax.set_yticks(positions, y_labels)    
+
+        plt.vlines(self.gridlines, min(pix_coords[1]), max(pix_coords[1]), color='red', linewidth=1)
+        plt.hlines(self.gridlines, min(pix_coords[0]), max(pix_coords[0]), color= 'red', linewidth=1)
+
+        plt.plot(dr_trans[0], dr_trans[1], 'rx', markersize=10)
+
+        plt.tight_layout()
+        plt.margins(0)
+        plt.show()
+
+        return
+    
+    def create_data_frame(self, dark_regions, coords):
+        dark_ra = []
+        dark_dec = []
+
+        for i in dark_regions:
+            ra = i[0] / (self.dim) + coords[0]
+            dec = i[1] / (self.dim) + coords[2]
+            dark_ra.append(ra)
+            dark_dec.append(dec)
+
+        dark_catalogue = pd.DataFrame({'ra':dark_ra, 'dec':dark_dec})
+        return dark_catalogue
+
+    def dark_sky_degree(self, ra, dec, catalog_df):
+        """Generates dark sky positions for a 1 x 1 degree region of the sky with lower "corner" given by (ra,dec)
+        """
+        
+        coords = [ra, ra+1, dec, dec+1]
+        print("Combining mask and queried stars...")
+        all_stars = self.combine_data(catalog_df, coords)
+        print("Calculating pixel values for stars....")
+        all_stars = self.create_pixel_columns(all_stars, coords)
+
+        print("Creating segmentation map...")
+        segmentation_map = self.seg_map(all_stars)
+        
+        print("Finding dark regions...")
+        dr_trans, dark_regions = self.find_dark_regions(segmentation_map)
+
+        print("Plotting dark regions...")
+        pix_coords = [all_stars['ra_pix'], all_stars['dec_pix'], all_stars['rad_pix']]
+        self.create_plot(segmentation_map, coords, pix_coords, dr_trans)
+
+        print("Converting dark regions to coordinates...")
+        dark_catalogue = self.create_data_frame(dark_regions, coords)
+        
+        print("Done!")
+        return dark_catalogue
+        
+    def create_catalogue(self, ra, dec, query_dist=1.0):
+        
+        # load all masked stars
+        print("Loading masked star data....")
+        mask_df = self.load_mask_data()
+        
+        # query sky for some amount
+        print(f"Querying the tractor catalog for stars from RA({ra}, {ra+query_dist}) to DEC({dec}, {dec+query_dist})...")
+        query_df = self.query_tractor(ra, dec, query_dist)
+        
+        # make array of ra / dec starting points for degree cubes
+        dec_range = np.arange(dec, dec+query_dist)
+        ra_range = np.arange(ra, ra+query_dist)
+        
+        # define grid stuff
+        print("Defining grid lines...")
+        self.define_grid()
+        
+        print("Generating one degree of sky catalog...")
+        degree_catalog = self.dark_sky_degree(ra, dec, query_df)
+        
+        # catalog_list = []
+        
+        # for dec_degree in dec_range:
+        #     for ra_degree in ra_range:
+        #         catalog_list.append(self.dark_sky_degree(ra_degree, dec_degree, mask_df, query_df))
+        
+        return degree_catalog
