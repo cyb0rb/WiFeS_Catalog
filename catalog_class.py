@@ -102,18 +102,19 @@ class SkyCatalogue():
         
         # cut masked stars to only use the same area as catalog_stars
         masked_box = self.mask_df.query('(@coords[0] < ra < @coords[1]) and (@coords[2] < dec < @coords[3])')
+        catalog_box = catalog_stars.query('(@coords[0] < ra < @coords[1]) and (@coords[2] < dec < @coords[3])')
         
         # apply buffer radius to mask and star data
         masked_box.loc[:, 'radius'] = masked_box['radius'] + (self.mask_radius / 3600.)
         # TODO check for nan's / inf
-        catalog_stars['radius'] = self.calculate_mask_radius(catalog_stars['mag_g'])
-        print(catalog_stars['radius'].isna().sum())
+        catalog_box['radius'] = self.calculate_mask_radius(catalog_box['mag_g'])
+        # print(catalog_box['radius'].isna().sum())
         
         # remove g mag
-        catalog_stars = catalog_stars.drop('mag_g', axis=1)
+        catalog_box = catalog_box.drop('mag_g', axis=1)
         
         # combine catalog + mask
-        all_stars = pd.concat([masked_box, catalog_stars]).reset_index(drop=True)
+        all_stars = pd.concat([masked_box, catalog_box]).reset_index(drop=True)
         return all_stars
     
     def create_pixel_columns(self, all_stars:pd.DataFrame, coords):
@@ -250,7 +251,7 @@ class SkyCatalogue():
         dark_catalogue = pd.DataFrame({'ra':dark_ra, 'dec':dark_dec})
         return dark_catalogue
     
-    def find_overlapping_extent(ra, dec, all_stars):
+    def find_overlapping_extent(self, ra, dec, all_stars):
         # grab everything in a 1 degree square
         print(f"Finding everything within the square RA=({ra}, {ra+1}) and DEC=({dec}, {dec+1})")
         
@@ -261,7 +262,7 @@ class SkyCatalogue():
         max_ra = degree_masks['max_ra'].max()
         max_dec = degree_masks['max_dec'].max()
         
-        return min_ra, min_dec, max_ra, max_dec
+        return [min_ra, min_dec, max_ra, max_dec]
 
     def create_degree_square(self, ra, dec, catalog_df):
         """Generates dark sky positions for a 1 x 1 degree region of the sky with lower "corner" given by (ra,dec)
@@ -330,19 +331,20 @@ class SkyCatalogue():
         ra_coords = coord_grid[0].flatten()
         dec_coords = coord_grid[1].flatten()
         overlap_store = []
+        larger_catalogue = pd.DataFrame(columns=['ra','dec'])
         
-        catalogue = self.create_degree_square(ra, dec, query_df)
+        # catalogue = self.create_degree_square(ra, dec, query_df)
         
-        # print("Generating sky catalog...")
-        # for ra_c, dec_c in zip(ra_coords,dec_coords):
-        #     print(f"Generating sky catalog for square RA({ra_c}, {ra_c+1}) DEC({dec_c}, {dec_c+1})..")
-        #     cat, overlap = self.create_degree_square(ra_c, dec_c, query_df)
-        #     larger_catalogue = pd.concat([larger_catalogue,cat],axis=0).reset_index(drop=True)
-        #     overlap_store.append(overlap)
-        #     # print('Added (' + str(ra) + ', ' + str(dec) + ') to catalogue')
+        print("Generating sky catalog...")
+        for ra_c, dec_c in zip(ra_coords,dec_coords):
+            print(f"Generating sky catalog for square RA({ra_c}, {ra_c+1}) DEC({dec_c}, {dec_c+1})..")
+            cat, overlap = self.create_degree_square(ra_c, dec_c, query_df)
+            larger_catalogue = pd.concat([larger_catalogue,cat],axis=0).reset_index(drop=True)
+            overlap_store.append(overlap)
+            # print('Added (' + str(ra) + ', ' + str(dec) + ') to catalogue')
         
-        # print("Removing positions from overlapping regions...")
-        # catalogue = self.remove_overlap_positions(ra_coords, dec_coords, overlap_store, larger_catalogue)
+        print("Removing positions from overlapping regions...")
+        catalogue = self.remove_overlap_positions(ra_coords, dec_coords, overlap_store, larger_catalogue)
         
         
         # degree_catalog = self.create_degree_square(ra, dec, query_df)
