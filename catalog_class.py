@@ -48,7 +48,7 @@ class SkyCatalogue():
 
     @timer
     def query_tractor(self, ra, dec, dist=1.0):
-        """Queries the Astro Data Lab for the ra, dec and mag_g of the objects within a square of side length (dist).     
+        """Queries the Astro Data Lab for the ra, dec and mag of the objects within a square of side length (dist).     
         dist is in degrees
         """
         # Bounds of the square we are querying objects for
@@ -57,27 +57,43 @@ class SkyCatalogue():
         dec_min=dec
         dec_max = dec + dist
 
-        # query = f"""
-        # SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
-        # FROM ls_dr10.tractor_s
-        # WHERE ra >= ({ra_min}) AND ra < ({ra_max})
-        # AND dec >= ({dec_min}) AND dec < ({dec_max})
-        # AND (mag_g<=21 AND mag_g>=16
-        #     OR mag_r<=21 AND mag_r>=16
-        #     OR mag_i<=21 AND mag_i>=16
-        #     OR mag_z<=21 AND mag_z>=16)       
-        # """
-        
         query = f"""
         SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
         FROM ls_dr10.tractor_s
         WHERE ra >= ({ra_min}) AND ra < ({ra_max})
         AND dec >= ({dec_min}) AND dec < ({dec_max})
-        AND mag_g<=21 AND mag_g>=16       
+        AND (mag_g<=21 AND mag_g>=16
+            OR mag_r<=21 AND mag_r>=16
+            OR mag_i<=21 AND mag_i>=16
+            OR mag_z<=21 AND mag_z>=16)       
         """
+        
         
         # check if this completes successfuly
         brick_info = qc.query(sql=query, fmt="pandas")
+
+        mag = []
+        passband = []
+        for n in range(len(brick_info['mag_g'])):
+            if brick_info['mag_g'][n] != np.inf:
+                mag.append(brick_info['mag_g'][n])
+                passband.append('g')
+            elif brick_info['mag_r'][n] != np.inf:
+                mag.append(brick_info['mag_r'][n])
+                passband.append('r')
+            elif brick_info['mag_i'][n] != np.inf:
+                mag.append(brick_info['mag_i'][n])
+                passband.append('i')
+            elif brick_info['mag_z'][n] != np.inf:
+                mag.append(brick_info['mag_z'][n])
+                passband.append('z')
+            else:
+                brick_info = brick_info.drop(brick_info.iloc['mag'][n])
+
+        brick_info = brick_info.drop(['mag_g','mag_r','mag_i','mag_z'], axis=1)
+        brick_info['mag'] = mag
+        brick_info['passband'] = passband
+
         return brick_info
     
     @timer
@@ -97,8 +113,8 @@ class SkyCatalogue():
         self.mask_df = pd.concat(all_masks, ignore_index=True)
     
     @timer
-    def calculate_mask_radius(self, mag_g):
-        return (self.mask_radius/3600) + 1630./3600. * 1.396**(-mag_g)
+    def calculate_mask_radius(self, mag):
+        return (self.mask_radius/3600) + 1630./3600. * 1.396**(-mag)
     
     @timer
     def combine_data(self, catalog_stars:pd.DataFrame, coords):
@@ -112,11 +128,11 @@ class SkyCatalogue():
         # apply buffer radius to mask and star data
         masked_box.loc[:, 'radius'] = masked_box['radius'] + (self.mask_radius / 3600.)
         # TODO check for nan's / inf
-        catalog_box.loc[:, 'radius'] = self.calculate_mask_radius(catalog_box.loc[:,'mag_g'])
+        catalog_box.loc[:, 'radius'] = self.calculate_mask_radius(catalog_box.loc[:,'mag'])
         # print(catalog_box['radius'].isna().sum())
         
         # remove g mag
-        catalog_box = catalog_box.drop('mag_g', axis=1)
+        catalog_box = catalog_box.drop(['mag','passband'], axis=1)
         
         # combine catalog + mask
         all_stars = pd.concat([masked_box, catalog_box]).reset_index(drop=True)
