@@ -74,17 +74,19 @@ class SkyCatalogue():
 
         mag = []
         passband = []
+        brick_info = brick_info.replace([np.inf], np.nan)
+
         for n in range(len(brick_info['mag_g'])):
-            if brick_info['mag_g'][n] != np.inf:
+            if pd.notna(brick_info['mag_g'][n]):
                 mag.append(brick_info['mag_g'][n])
                 passband.append('g')
-            elif brick_info['mag_r'][n] != np.inf:
+            elif pd.notna(brick_info['mag_r'][n]):
                 mag.append(brick_info['mag_r'][n])
                 passband.append('r')
-            elif brick_info['mag_i'][n] != np.inf:
+            elif pd.notna(brick_info['mag_i'][n]):
                 mag.append(brick_info['mag_i'][n])
                 passband.append('i')
-            elif brick_info['mag_z'][n] != np.inf:
+            elif pd.notna(brick_info['mag_z'][n]):
                 mag.append(brick_info['mag_z'][n])
                 passband.append('z')
             else:
