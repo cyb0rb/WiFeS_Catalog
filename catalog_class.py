@@ -74,7 +74,7 @@ class SkyCatalogue():
 
         mag = []
         passband = []
-        pd.options.mode.use_inf_as_na = True
+        brick_info = brick_info.replace([np.inf], np.nan)
 
         for n in range(len(brick_info['mag_g'])):
             if pd.notna(brick_info['mag_g'][n]):
