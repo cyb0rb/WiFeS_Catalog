@@ -27,6 +27,7 @@ def timer(func):
 
 class SkyCatalogue():
     
+    @timer
     def __init__(self, query_dist=1.0, map_dist=1.0, mask_radius=20, fov=45):
         
         self.query_dist = query_dist
@@ -45,6 +46,7 @@ class SkyCatalogue():
         
         pass
 
+    @timer
     def query_tractor(self, ra, dec, dist=1.0):
         """Queries the Astro Data Lab for the ra, dec and mag_g of the objects within a square of side length (dist).     
         dist is in degrees
@@ -78,6 +80,7 @@ class SkyCatalogue():
         brick_info = qc.query(sql=query, fmt="pandas")
         return brick_info
     
+    @timer
     def load_mask_data(self):
         """Load all of the mask data files. 
         Returns a pandas Dataframe with columns 'ra', 'dec', 'radius'
@@ -93,21 +96,23 @@ class SkyCatalogue():
                 
         self.mask_df = pd.concat(all_masks, ignore_index=True)
     
+    @timer
     def calculate_mask_radius(self, mag_g):
         return (self.mask_radius/3600) + 1630./3600. * 1.396**(-mag_g)
     
+    @timer
     def combine_data(self, catalog_stars:pd.DataFrame, coords):
         """Combines the data from masked and catalog stars based on some coordinate range"""
         # coords = [ra, ra+map_dist, dec, dec+map_dist]
         
         # cut masked stars to only use the same area as catalog_stars
         masked_box = self.mask_df.query('(@coords[0] < ra < @coords[1]) and (@coords[2] < dec < @coords[3])')
-        catalog_box = catalog_stars.query('(@coords[0] < ra < @coords[1]) and (@coords[2] < dec < @coords[3])')
+        catalog_box = catalog_stars.query('(@coords[0] < ra < @coords[1]) and (@coords[2] < dec < @coords[3])').copy()
         
         # apply buffer radius to mask and star data
         masked_box.loc[:, 'radius'] = masked_box['radius'] + (self.mask_radius / 3600.)
         # TODO check for nan's / inf
-        catalog_box['radius'] = self.calculate_mask_radius(catalog_box['mag_g'])
+        catalog_box.loc[:, 'radius'] = self.calculate_mask_radius(catalog_box.loc[:,'mag_g'])
         # print(catalog_box['radius'].isna().sum())
         
         # remove g mag
@@ -117,6 +122,7 @@ class SkyCatalogue():
         all_stars = pd.concat([masked_box, catalog_box]).reset_index(drop=True)
         return all_stars
     
+    @timer
     def create_pixel_columns(self, all_stars:pd.DataFrame, coords):
         """Creates columns for min and max ra and dec for all stars in the dataframe"""
         # coords: [ra, ra+map_dist, dec, dec+map_dist]
@@ -150,6 +156,7 @@ class SkyCatalogue():
         
         return all_stars
     
+    @timer
     def seg_map(self, star_data:pd.DataFrame):
         """Creates segementation map of shape (`dim`, `dim`) based on the mask locations and pixel data of `star_data`"""
 
@@ -163,11 +170,6 @@ class SkyCatalogue():
             
             # make array of indexes
             # TODO add check of dimension sign to make sure it's not negative
-            # print(star['max_dec_pix'] - star['min_dec_pix'])
-            # print(star['max_ra_pix'] - star['min_ra_pix'])
-            # print(star['min_dec_pix'])
-            # dec_dim = np.abs(star['max_dec_pix'] - star['min_dec_pix'])
-            # ra_dim = np.abs(star['max_ra_pix'] - star['min_ra_pix'])
             chunk = np.indices((star['max_dec_pix'] - star['min_dec_pix'], star['max_ra_pix'] - star['min_ra_pix']))
             
             # adjust indices to correspond to the larger grid
@@ -184,6 +186,7 @@ class SkyCatalogue():
         array.reshape((self.dim, self.dim))
         return array
     
+    @timer
     def define_grid(self):
         """Creates gridlines and centers on pixels for the initialized dimension and field of view"""
         self.gridlines = np.arange(0, self.dim+1, (self.fov/3600 * self.dim))
@@ -195,6 +198,7 @@ class SkyCatalogue():
         self.x_cen, self.y_cen = np.meshgrid(centers, centers)
         return
     
+    @timer
     def find_dark_regions(self, segmap):
 
         dark_regions = []
@@ -211,7 +215,7 @@ class SkyCatalogue():
 
         return dr_trans, dark_regions
 
-
+    @timer
     def create_plot(self, array, coords, pix_coords, dr_trans):
 
         # Creating exclusion map with grid
@@ -238,6 +242,7 @@ class SkyCatalogue():
 
         return
     
+    @timer
     def create_data_frame(self, dark_regions, coords):
         dark_ra = []
         dark_dec = []
@@ -251,6 +256,7 @@ class SkyCatalogue():
         dark_catalogue = pd.DataFrame({'ra':dark_ra, 'dec':dark_dec})
         return dark_catalogue
     
+    @timer
     def find_overlapping_extent(self, ra, dec, all_stars):
         # grab everything in a 1 degree square
         print(f"Finding everything within the square RA=({ra}, {ra+1}) and DEC=({dec}, {dec+1})")
@@ -264,7 +270,8 @@ class SkyCatalogue():
         
         return [min_ra, min_dec, max_ra, max_dec]
 
-    def create_degree_square(self, ra, dec, catalog_df):
+    @timer
+    def create_degree_square(self, ra, dec, catalog_df, plot_image=False):
         """Generates dark sky positions for a 1 x 1 degree region of the sky with lower "corner" given by (ra,dec)
         """
         
@@ -280,9 +287,10 @@ class SkyCatalogue():
         print("Finding dark regions...")
         dr_trans, dark_regions = self.find_dark_regions(segmentation_map)
 
-        print("Plotting dark regions...")
-        pix_coords = [all_stars['ra_pix'], all_stars['dec_pix'], all_stars['rad_pix']]
-        self.create_plot(segmentation_map, coords, pix_coords, dr_trans)
+        if plot_image:
+            print("Plotting dark regions...")
+            pix_coords = [all_stars['ra_pix'], all_stars['dec_pix'], all_stars['rad_pix']]
+            self.create_plot(segmentation_map, coords, pix_coords, dr_trans)
 
         print("Converting dark regions to coordinates...")
         dark_catalogue = self.create_data_frame(dark_regions, coords)
@@ -293,6 +301,7 @@ class SkyCatalogue():
         print("Done!")
         return dark_catalogue, overlap
     
+    @timer
     def remove_overlap_positions(self, ra_coords, dec_coords, overlap_store, larger_catalogue):
         catalogue = larger_catalogue.copy()
 
@@ -309,7 +318,8 @@ class SkyCatalogue():
                         
         return catalogue
         
-    def create_catalogue(self, ra, dec, query_dist=1.0):
+    @timer
+    def create_catalogue(self, ra, dec, query_dist=1.0, plot_image=False):
         
         # # load all masked stars
         # print("Loading masked star data....")
@@ -338,7 +348,7 @@ class SkyCatalogue():
         print("Generating sky catalog...")
         for ra_c, dec_c in zip(ra_coords,dec_coords):
             print(f"Generating sky catalog for square RA({ra_c}, {ra_c+1}) DEC({dec_c}, {dec_c+1})..")
-            cat, overlap = self.create_degree_square(ra_c, dec_c, query_df)
+            cat, overlap = self.create_degree_square(ra_c, dec_c, query_df, plot_image)
             larger_catalogue = pd.concat([larger_catalogue,cat],axis=0).reset_index(drop=True)
             overlap_store.append(overlap)
             # print('Added (' + str(ra) + ', ' + str(dec) + ') to catalogue')
