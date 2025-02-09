@@ -318,7 +318,7 @@ class SkyCatalogue():
         return dark_catalogue, overlap
     
     @timer
-    def remove_overlap_positions(self, ra_coords, dec_coords, overlap_store, larger_catalogue):
+    def remove_overlap_positions(self, ra_coords, dec_coords, overlap_store, larger_catalogue, bounds=1):
         catalogue = larger_catalogue.copy()
 
         # for each square w/ corner at ra, dec and associated overlap_store index
@@ -327,13 +327,14 @@ class SkyCatalogue():
             # for each coordinate pair in the catalog
             for x,y in zip(catalogue['ra'],catalogue['dec']):
                 
-                # if catalog x is less than ra
-                if x>ra and x<(ra+1):
-                    if (y<=dec and y>=overlap_store[i][1]) or (y>=(dec+1) and y<=overlap_store[i][3]):
+                # if catalog ra falls within 1 degree ra bounds
+                if x>ra and x<(ra+bounds):
+                    # if catalog dec < lower dec bound
+                    if (y<=dec and y>=overlap_store[i][1]) or (y>=(dec+bounds) and y<=overlap_store[i][3]):
                         j = catalogue[(catalogue.dec == y)].index
                         catalogue.drop(np.array(j),inplace=True)
-                if y>dec and y<(dec+1):
-                    if (x<=ra and x>overlap_store[i][0]) or (x>=(ra+1) and x<=overlap_store[i][2]):
+                if y>dec and y<(dec+bounds):
+                    if (x<=ra and x>overlap_store[i][0]) or (x>=(ra+bounds) and x<=overlap_store[i][2]):
                         j = catalogue[(catalogue.ra == x)].index
                         catalogue.drop(np.array(j),inplace=True)
                         
@@ -361,7 +362,7 @@ class SkyCatalogue():
         
         print("Generating sky catalog...")
         for ra_c, dec_c in zip(ra_coords,dec_coords):
-            print(f"Generating sky catalog for square RA,DEC ({ra_c}, {dec_c}) to ({ra_c+1}, {dec_c+1})..")
+            print(f"> Generating sky catalog for square RA,DEC ({ra_c}, {dec_c}) to ({ra_c+1}, {dec_c+1})..")
             cat, overlap = self.create_degree_square(ra_c, dec_c, query_df, plot_image)
             larger_catalogue = pd.concat([larger_catalogue,cat],axis=0).reset_index(drop=True)
             overlap_store.append(overlap)
@@ -408,7 +409,7 @@ class SkyCatalogue():
         print("WHOLE SKY: Removing positions from overlapping regions...")
         catalogue = self.remove_overlap_positions(ra_coords, dec_coords, overlap_store, larger_catalogue)
         print("================= Done! =================")
-        return catalogue
+        return catalogue, ra_coords, dec_coords, overlap_store
         
         
         
