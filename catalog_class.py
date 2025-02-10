@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 from astropy.io import fits as fits
+from astropy.coordinates import SkyCoord
 
 import pkg_resources
 pkg_resources.require("numpy==1.26.3")
@@ -46,6 +47,34 @@ class SkyCatalogue():
         
         pass
 
+    def galactic_lmc_check(ra,dec,query_dist):
+
+        ra_min=ra
+        ra_max = ra + query_dist
+        dec_min=dec
+        dec_max = dec + query_dist
+
+        # check if in LMC
+        if (ra_min >=76) and (ra_max <= 86) and (dec_min >= -76) and (dec_max <= -64):
+            return False
+
+        # check if in SMC
+        if (ra_min >=11) and (ra_max <= 16) and (dec_min >= -76) and (dec_max <= -70):
+            return False    
+
+        # check if on the galactic plane
+        c_icrs_min = SkyCoord(ra=ra_min, dec=dec_min, frame='icrs', unit='degree')
+        c_icrs_max = SkyCoord(ra=ra_max, dec=dec_max, frame='icrs', unit='degree')
+
+        c_gal_min = c_icrs_min.galactic
+        c_gal_max = c_icrs_max.galactic
+
+        if abs(c_gal_min.b.value) <= 18 or abs(c_gal_max.b.value) <= 18:
+            return False
+
+        return True
+
+    
     @timer
     def query_tractor(self, ra, dec, dist=1.0):
         """Queries the Astro Data Lab for the ra, dec and mag of the objects within a square of side length (dist).     
