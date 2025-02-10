@@ -72,6 +72,10 @@ class SkyCatalogue():
         # check if in SMC
         if (ra_min >=11) and (ra_max <= 16) and (dec_min >= -76) and (dec_max <= -70):
             return False    
+        
+        # check if in the gap near the galactic plane
+        if (ra_min >=43) and (ra_max <= 75) and (dec_min >= 10) and (dec_max <= 30):
+            return False
 
         # check if on the galactic plane
         c_icrs_min = SkyCoord(ra=ra_min, dec=dec_min, frame='icrs', unit='degree')
@@ -80,7 +84,7 @@ class SkyCatalogue():
         c_gal_min = c_icrs_min.galactic
         c_gal_max = c_icrs_max.galactic
 
-        if abs(c_gal_min.b.value) <= 18 or abs(c_gal_max.b.value) <= 18:
+        if abs(c_gal_min.b.value) <= 19 or abs(c_gal_max.b.value) <= 19:
             return False
 
         return True
