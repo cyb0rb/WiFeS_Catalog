@@ -140,8 +140,16 @@ class SkyCatalogue():
                 mask_array_byteswap = mask_array.byteswap().newbyteorder()
                 masked_stars = pd.DataFrame(mask_array_byteswap)
                 all_masks.append(masked_stars)
+
+        cluster_masks = []
+        with fits.open("NGC-star-clusters.fits") as hdu:
+                data = hdu[1].data
+
+        clusters = pd.DataFrame(data)
+        cluster_masks.append(clusters)
                 
         self.mask_df = pd.concat(all_masks, ignore_index=True)
+        self.mask_df = pd.concat(cluster_masks, ignore_index=True)
     
     @timer
     def calculate_mask_radius(self, mag):
