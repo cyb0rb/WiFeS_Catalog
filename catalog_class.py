@@ -18,6 +18,7 @@ import time
 import cProfile
 import pstats
 from pstats import SortKey
+from line_profiler import profile
 
 def timer(func):
     @functools.wraps(func)
@@ -233,8 +234,8 @@ class SkyCatalogue():
         all_stars['min_dec'] = all_stars['dec'] - all_stars['radius']
         
         # boolean for radii that go above 1-degree integer RA/DEC bounds
-        expression = '(max_ra > ceil(ra)) | (min_ra < floor(ra)) | (max_dec > ceil(dec)) | (min_dec < floor(dec))'
-        all_stars['overlap'] = all_stars.eval(expression)
+        # expression = '(max_ra > ceil(ra)) | (min_ra < floor(ra)) | (max_dec > ceil(dec)) | (min_dec < floor(dec))'
+        # all_stars['overlap'] = all_stars.eval(expression)
         
         # ra, dec, and radius in pixels
         # TODO check if off by one is needed?
@@ -253,14 +254,15 @@ class SkyCatalogue():
         all_stars.loc[all_stars['min_dec_pix'] < 0, 'min_dec_pix'] = 0
         all_stars.loc[all_stars['max_dec_pix'] > self.dim, 'max_dec_pix'] = self.dim
         
+        # print(all_stars.dtypes)
         return all_stars
     
     # @timer
+    @profile
     def seg_map(self, star_data:pd.DataFrame):
         """Creates segementation map of shape (`dim`, `dim`) based on the mask locations and pixel data of `star_data`"""
 
         array = np.zeros((self.dim, self.dim), dtype=int)
-        array.flatten()
         
         for star in star_data.to_dict('records'):
             
@@ -282,7 +284,6 @@ class SkyCatalogue():
             # change all values of the segmap array to 0 where distances are < mask radius
             np.place(array[star['min_dec_pix']:star['max_dec_pix'], star['min_ra_pix']:star['max_ra_pix']], distances < star['rad_pix'], 1)
 
-        array.reshape((self.dim, self.dim))
         return array
     
     # @timer
@@ -546,10 +547,12 @@ if __name__=="__main__":
     
     # catalog = SkyCatalogue()
     catalog_g_band = SkyCatalogue(all_bands=False)
-    cProfile.run('catalog_g_band.create_catalogue(3, -4, 2)', 'gstats')
+    # cProfile.run('catalog_g_band.create_catalogue(3, -4, 2)', 'gstats')
+    catalog_g_band.all_sky(query_dist=2.0, min_ra=212, max_ra=216, min_dec=16, max_dec=20)
+    # cProfile.run('catalog_g_band.all_sky(query_dist=2.0, min_ra=212, max_ra=216, min_dec=16, max_dec=20)', 'gstats')
     
-    gstats = pstats.Stats('gstats')
-    gstats.sort_stats(SortKey.TIME).print_stats('catalog_class')
+    # gstats = pstats.Stats('gstats')
+    # gstats.sort_stats(SortKey.TIME).print_stats(20)
     # gstats.print_stats()
     # gstats.strip_dirs().sort_stats(-1).print_stats()
     # positions_gband = catalog_g_band.create_catalogue(3, -4, 2)
