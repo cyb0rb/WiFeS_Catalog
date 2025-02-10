@@ -34,9 +34,9 @@ def timer(func):
 class SkyCatalogue():
     
     # @timer
-    def __init__(self, all_bands=True, map_dist=1.0, mask_radius=20, fov=45):
+    def __init__(self, bands, map_dist=1.0, mask_radius=20, fov=45):
         
-        self.all_bands = all_bands
+        self.bands = bands
         self.map_dist = map_dist
         self.dim = int((3600*4) * self.map_dist)
         self.mask_radius = mask_radius
@@ -54,7 +54,7 @@ class SkyCatalogue():
 
     def galactic_check(self, ra,dec,dist):
         """Check if any of a square with side length `dist` and a bottom left corner (ra,dec) has
-        any intersection with the galactic plane (|b| <= 18) or the LMC/SMC
+        any intersection with the galactic plane (|b| <= 19) or the LMC/SMC
         
         Returns False if square falls within forbidden region, True otherwise
         """
@@ -117,7 +117,7 @@ class SkyCatalogue():
         dec_min=dec
         dec_max = dec + dist
 
-        if self.all_bands:
+        if self.bands == ('g','r','i','z'):
             query = f"""
             SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
             FROM ls_dr10.tractor_s
@@ -128,13 +128,32 @@ class SkyCatalogue():
                 OR mag_i<=21 AND mag_i>=16
                 OR mag_z<=21 AND mag_z>=16)       
             """
-        else:
+        elif self.bands == ('g', 'r', 'i'):
             query = f"""
             SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
             FROM ls_dr10.tractor_s
             WHERE ra >= ({ra_min}) AND ra < ({ra_max})
             AND dec >= ({dec_min}) AND dec < ({dec_max})
-            AND mag_g<=21 AND mag_g>=16     
+            AND (mag_g<=21 AND mag_g>=16
+                OR mag_r<=21 AND mag_r>=16
+                OR mag_i<=21 AND mag_i>=16)      
+            """
+        elif self.bands == ('g','r'):
+            query = f"""
+            SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
+            FROM ls_dr10.tractor_s
+            WHERE ra >= ({ra_min}) AND ra < ({ra_max})
+            AND dec >= ({dec_min}) AND dec < ({dec_max})
+            AND (mag_g<=21 AND mag_g>=16
+                OR mag_r<=21 AND mag_r>=16)     
+            """
+        elif self.bands ==('g'):
+            query = f"""
+            SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
+            FROM ls_dr10.tractor_s
+            WHERE ra >= ({ra_min}) AND ra < ({ra_max})
+            AND dec >= ({dec_min}) AND dec < ({dec_max})
+            AND mag_g<=21 AND mag_g>=16   
             """
         
         # check if this completes successfuly
@@ -543,7 +562,7 @@ class SkyCatalogue():
 if __name__=="__main__":
     
     # catalog = SkyCatalogue()
-    catalog_g_band = SkyCatalogue(all_bands=False)
+    catalog_g_band = SkyCatalogue(bands=('g'))
     cProfile.run('catalog_g_band.create_catalogue(3, -4, 2)', 'gstats')
     
     gstats = pstats.Stats('gstats')
