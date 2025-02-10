@@ -47,13 +47,22 @@ class SkyCatalogue():
         
         pass
 
-    def galactic_check(ra,dec,query_dist):
+    def galactic_lmc_check(ra,dec,query_dist):
 
         ra_min=ra
         ra_max = ra + query_dist
         dec_min=dec
         dec_max = dec + query_dist
 
+        # check if in LMC
+        if (ra_min >=76) and (ra_max <= 86) and (dec_min >= -76) and (dec_max <= -64):
+            return False
+
+        # check if in SMC
+        if (ra_min >=11) and (ra_max <= 16) and (dec_min >= -76) and (dec_max <= -70):
+            return False    
+
+        # check if on the galactic plane
         c_icrs_min = SkyCoord(ra=ra_min, dec=dec_min, frame='icrs', unit='degree')
         c_icrs_max = SkyCoord(ra=ra_max, dec=dec_max, frame='icrs', unit='degree')
 
@@ -64,6 +73,7 @@ class SkyCatalogue():
             return False
 
         return True
+
     
     @timer
     def query_tractor(self, ra, dec, dist=1.0):
