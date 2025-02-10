@@ -47,7 +47,7 @@ class SkyCatalogue():
         pass
 
     @timer
-    def query_tractor(self, ra, dec, dist=1.0):
+    def query_tractor(self, ra, dec, dist=1.0, all_bands=True):
         """Queries the Astro Data Lab for the ra, dec and mag of the objects within a square of side length (dist).     
         dist is in degrees
         """
@@ -57,17 +57,25 @@ class SkyCatalogue():
         dec_min=dec
         dec_max = dec + dist
 
-        query = f"""
-        SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
-        FROM ls_dr10.tractor_s
-        WHERE ra >= ({ra_min}) AND ra < ({ra_max})
-        AND dec >= ({dec_min}) AND dec < ({dec_max})
-        AND (mag_g<=21 AND mag_g>=16
-            OR mag_r<=21 AND mag_r>=16
-            OR mag_i<=21 AND mag_i>=16
-            OR mag_z<=21 AND mag_z>=16)       
-        """
-        
+        if all_bands:
+            query = f"""
+            SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
+            FROM ls_dr10.tractor_s
+            WHERE ra >= ({ra_min}) AND ra < ({ra_max})
+            AND dec >= ({dec_min}) AND dec < ({dec_max})
+            AND (mag_g<=21 AND mag_g>=16
+                OR mag_r<=21 AND mag_r>=16
+                OR mag_i<=21 AND mag_i>=16
+                OR mag_z<=21 AND mag_z>=16)       
+            """
+        else:
+            query = f"""
+            SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
+            FROM ls_dr10.tractor_s
+            WHERE ra >= ({ra_min}) AND ra < ({ra_max})
+            AND dec >= ({dec_min}) AND dec < ({dec_max})
+            AND mag_g<=21 AND mag_g>=16     
+            """
         
         # check if this completes successfuly
         brick_info = qc.query(sql=query, fmt="pandas")
@@ -321,24 +329,61 @@ class SkyCatalogue():
     
     @timer
     def remove_overlap_positions(self, ra_coords, dec_coords, overlap_store, larger_catalogue, bounds=1):
+        # overlap_store = [ [minra, mindec, maxra, maxdec] ]
         catalogue = larger_catalogue.copy()
 
-        # for each square w/ corner at ra, dec and associated overlap_store index
-        for ra,dec,i in zip(ra_coords,dec_coords,range(len(overlap_store))):
+        # for each ra / dec square and associated overlap
+        for ra, dec, overlap in zip(ra_coords, dec_coords, overlap_store):
             
-            # for each coordinate pair in the catalog
-            for x,y in zip(catalogue['ra'],catalogue['dec']):
+            # make sure this works if ra/dec extents are less than the actual bounds!
+            min_ra = overlap[0] if overlap[0] < ra else ra
+            min_dec = overlap[1] if overlap[1] < dec else dec
+            max_ra = overlap[2] if overlap[2] > ra+bounds else ra+bounds
+            max_dec = overlap[3] if overlap[3] > dec+bounds else dec+bounds
+            
+            # print(f"overlap_store: {overlap}")
+            # print(f"min/max ra/dec: {min_ra}, {min_dec}, {max_ra}, {max_dec}")
+            # everything within square bounded by ra / dec and bounds that you're checking
+            smaller_box = catalogue.query(f'({ra} < ra < {ra + bounds}) & ({dec} < dec < {dec + bounds})') 
+            # print(f'Small box: ({ra} < ra < {ra + bounds}) & ({dec} < dec < {dec + bounds})')
+            # print(smaller_box.shape)
+            
+            # select everything within square bounded by the min/max ra/dec of the overlap store
+            bigger_box = catalogue.query(f'({min_ra} <= ra <= {max_ra}) & ({min_dec} <= dec <= {max_dec})')
+            # print(f'Large box: ({min_ra} <= ra <= {max_ra}) & ({min_dec} <= dec <= {max_dec})')
+            # print(bigger_box.shape)
+            
+            # only perform removal if there are actually sky positions in the "overlap region"
+            if smaller_box.shape < bigger_box.shape:
+                # everything that is in the bigger box but not the smaller one (within overlapping region)
+                overlap_region = pd.concat((bigger_box, smaller_box)).drop_duplicates(keep=False)
+                # concatenate the two and drop everything within the overlapping regions
+                catalogue = pd.concat((catalogue, overlap_region)).drop_duplicates(keep=False)
+            
+            
+
+        # for each square w/ corner at ra, dec and associated overlap_store index
+        # for ra,dec,i in zip(ra_coords,dec_coords,range(len(overlap_store))):
+            
+        #     # for each coordinate pair in the catalog
+        #     for x,y in zip(catalogue['ra'],catalogue['dec']):
                 
-                # if catalog ra falls within 1 degree ra bounds
-                if x>ra and x<(ra+bounds):
-                    # if catalog dec < lower dec bound
-                    if (y<=dec and y>=overlap_store[i][1]) or (y>=(dec+bounds) and y<=overlap_store[i][3]):
-                        j = catalogue[(catalogue.dec == y)].index
-                        catalogue.drop(np.array(j),inplace=True)
-                if y>dec and y<(dec+bounds):
-                    if (x<=ra and x>overlap_store[i][0]) or (x>=(ra+bounds) and x<=overlap_store[i][2]):
-                        j = catalogue[(catalogue.ra == x)].index
-                        catalogue.drop(np.array(j),inplace=True)
+        #         # if catalog ra falls within 1 degree ra bounds
+        #         if x>ra and x<(ra+bounds):
+        #             # if mindec < catalog dec < lower dec bound OR upper dec bound < catalog dec < maxdec
+        #             if (y<=dec and y>=overlap_store[i][1]) or (y>=(dec+bounds) and y<=overlap_store[i][3]):
+        #                 # select index of anything with that exact catalog dec
+        #                 j = catalogue[(catalogue.dec == y)].index
+        #                 # drop that index from catalog
+        #                 catalogue.drop(np.array(j),inplace=True)
+                
+        #         # if catalog dec falls within 1 degree dec bounds
+        #         if y>dec and y<(dec+bounds):
+        #             # if minra < catalog ra < lower ra bound OR upper ra bound < catalog ra < maxra
+        #             if (x<=ra and x>overlap_store[i][0]) or (x>=(ra+bounds) and x<=overlap_store[i][2]):
+        #                 # select index of anything with that exact catalog ra
+        #                 j = catalogue[(catalogue.ra == x)].index
+        #                 catalogue.drop(np.array(j),inplace=True)
                         
         return catalogue
         
@@ -348,7 +393,7 @@ class SkyCatalogue():
         
         # query sky for some amount
         print(f"Querying the tractor catalog for stars from RA/DEC({ra}, {dec}) to ({ra+query_dist}, {dec+query_dist})...")
-        query_df = self.query_tractor(ra, dec, query_dist)
+        query_df = self.query_tractor(ra, dec, query_dist, all_bands=False)
         
         # make array of ra / dec starting points for degree cubes
         dec_range = np.arange(dec, dec+query_dist)
@@ -409,9 +454,10 @@ class SkyCatalogue():
             overlap_store.append(overlap)
             
         print("WHOLE SKY: Removing positions from overlapping regions...")
-        catalogue = self.remove_overlap_positions(ra_coords, dec_coords, overlap_store, larger_catalogue)
+        catalogue = larger_catalogue
+        catalogue = self.remove_overlap_positions(ra_coords, dec_coords, overlap_store, larger_catalogue, bounds=query_dist)
         print("================= Done! =================")
-        return catalogue, ra_coords, dec_coords, overlap_store
+        return catalogue, ra_coords, dec_coords, overlap_store, larger_catalogue
         
         
         
