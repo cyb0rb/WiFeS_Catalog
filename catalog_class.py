@@ -14,6 +14,11 @@ from scipy.spatial import distance_matrix
 import functools
 import time
 
+# profiling
+import cProfile
+import pstats
+from pstats import SortKey
+
 def timer(func):
     @functools.wraps(func)
     def wrapper_timer(*args, **kwargs):
@@ -28,7 +33,7 @@ def timer(func):
 
 class SkyCatalogue():
     
-    @timer
+    # @timer
     def __init__(self, all_bands=True, map_dist=1.0, mask_radius=20, fov=45):
         
         self.all_bands = all_bands
@@ -80,7 +85,7 @@ class SkyCatalogue():
         return True
 
     
-    @timer
+    # @timer
     def query_tractor(self, ra, dec, dist=1.0):
         """Queries the Astro Data Lab for the ra, dec and mag of the objects within a square of side length (dist).     
         The queried square will range from (ra, dec) to (ra+dist, dec+dist)
@@ -157,7 +162,7 @@ class SkyCatalogue():
 
         return brick_info
     
-    @timer
+    # @timer
     def load_mask_data(self):
         """Load all of the mask data files. 
         Returns a pandas Dataframe with columns 'ra', 'dec', 'radius'
@@ -185,7 +190,7 @@ class SkyCatalogue():
                 
         self.mask_df = pd.concat(all_masks, ignore_index=True)
     
-    @timer
+    # @timer
     def calculate_mask_radius(self, mag):
         """Calculate masking radius (in degrees) for an object given some magnitude `mag` with
         a minimum size based on initialized mask radius (default=20 arcsec).
@@ -194,7 +199,7 @@ class SkyCatalogue():
         """
         return (self.mask_radius/3600) + 1630./3600. * 1.396**(-mag)
     
-    @timer
+    # @timer
     def combine_data(self, catalog_stars:pd.DataFrame, coords):
         """Combines the data from masked and catalog stars within some coordinate range"""
         # coords = [ra, ra+map_dist, dec, dec+map_dist]
@@ -205,7 +210,7 @@ class SkyCatalogue():
         
         # apply buffer radius to mask and star data
         masked_box.loc[:, 'radius'] = masked_box['radius'] + (self.mask_radius / 3600.)
-        # TODO check for nan's / inf
+        # TODO check for nan's / inf        
         catalog_box.loc[:, 'radius'] = self.calculate_mask_radius(catalog_box.loc[:,'mag'])
         # print(catalog_box['radius'].isna().sum())
         
@@ -216,7 +221,7 @@ class SkyCatalogue():
         all_stars = pd.concat([masked_box, catalog_box]).reset_index(drop=True)
         return all_stars
     
-    @timer
+    # @timer
     def create_pixel_columns(self, all_stars:pd.DataFrame, coords):
         """Creates columns for min and max ra and dec for all stars in the dataframe"""
         # coords: [ra, ra+map_dist, dec, dec+map_dist]
@@ -250,7 +255,7 @@ class SkyCatalogue():
         
         return all_stars
     
-    @timer
+    # @timer
     def seg_map(self, star_data:pd.DataFrame):
         """Creates segementation map of shape (`dim`, `dim`) based on the mask locations and pixel data of `star_data`"""
 
@@ -280,7 +285,7 @@ class SkyCatalogue():
         array.reshape((self.dim, self.dim))
         return array
     
-    @timer
+    # @timer
     def define_grid(self):
         """Creates gridlines and centers on pixels for the initialized dimension and field of view"""
         self.gridlines = np.arange(0, self.dim+1, (self.fov/3600 * self.dim))
@@ -292,7 +297,7 @@ class SkyCatalogue():
         self.x_cen, self.y_cen = np.meshgrid(centers, centers)
         return
     
-    @timer
+    # @timer
     def find_dark_regions(self, segmap):
 
         dark_regions = []
@@ -309,7 +314,7 @@ class SkyCatalogue():
 
         return dr_trans, dark_regions
 
-    @timer
+    # @timer
     def create_plot(self, array, coords, pix_coords, dr_trans):
 
         # Creating exclusion map with grid
@@ -336,7 +341,7 @@ class SkyCatalogue():
 
         return
     
-    @timer
+    # @timer
     def create_data_frame(self, dark_regions, coords):
         dark_ra = []
         dark_dec = []
@@ -350,7 +355,7 @@ class SkyCatalogue():
         dark_catalogue = pd.DataFrame({'ra':dark_ra, 'dec':dark_dec})
         return dark_catalogue
     
-    @timer
+    # @timer
     def find_overlapping_extent(self, all_stars):
         # grab everything in a 1 degree square
         # print(f"Finding everything within the square RA=({ra}, {ra+1}) and DEC=({dec}, {dec+1})")
@@ -364,7 +369,7 @@ class SkyCatalogue():
         
         return [min_ra, min_dec, max_ra, max_dec]
 
-    @timer
+    # @timer
     def create_degree_square(self, ra, dec, catalog_df, plot_image=False):
         """Generates dark sky positions for a 1 x 1 degree region of the sky with lower "corner" given by (ra,dec)
         """
@@ -396,7 +401,7 @@ class SkyCatalogue():
         print(">>>> Done!")
         return dark_catalogue, overlap
     
-    @timer
+    # @timer
     def remove_overlap_positions(self, ra_coords, dec_coords, overlap_store, larger_catalogue, bounds=1):
         # overlap_store = [ [minra, mindec, maxra, maxdec] ]
         catalogue = larger_catalogue.copy()
@@ -425,7 +430,7 @@ class SkyCatalogue():
                         
         return catalogue
         
-    @timer
+    # @timer
     def create_catalogue(self, ra, dec, query_dist=1.0, plot_image=False, allsky=False):
         """Creates catalog of sky positions in a square starting from a bottom-left corner of (ra, dec)
         up to (ra+query_dist, dec+query_dist) using a single query to the LSDR10 tractor catalog.
@@ -501,7 +506,7 @@ class SkyCatalogue():
         print(f"> Done!")
         return catalogue
     
-    @timer
+    # @timer
     def all_sky(self, query_dist=5.0, min_ra=0, min_dec=-90, max_ra=360, max_dec=30):
         """Loop through the entire sky."""
         
@@ -541,6 +546,12 @@ if __name__=="__main__":
     
     # catalog = SkyCatalogue()
     catalog_g_band = SkyCatalogue(all_bands=False)
-    positions_gband, overlap_gband = catalog_g_band.create_catalogue(3, -4, 2, allsky=True)
+    cProfile.run('catalog_g_band.create_catalogue(3, -4, 2)', 'gstats')
+    
+    gstats = pstats.Stats('gstats')
+    gstats.sort_stats(SortKey.TIME).print_stats('catalog_class')
+    # gstats.print_stats()
+    # gstats.strip_dirs().sort_stats(-1).print_stats()
+    # positions_gband = catalog_g_band.create_catalogue(3, -4, 2)
     # positions = catalog.all_sky(query_dist=30.0)
     # positions = catalog.create_catalogue()
