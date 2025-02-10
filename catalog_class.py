@@ -47,12 +47,15 @@ class SkyCatalogue():
         
         pass
 
-    def galactic_check(ra,dec,query_dist):
+    def galactic_check(self, ra,dec,dist):
+        """Check if any of a square with side length `dist` and a bottom left corner (ra,dec) has
+        any intersection with the galactic plane (|b| <= 18)
+        """
 
         ra_min=ra
-        ra_max = ra + query_dist
+        ra_max = ra + dist
         dec_min=dec
-        dec_max = dec + query_dist
+        dec_max = dec + dist
 
         c_icrs_min = SkyCoord(ra=ra_min, dec=dec_min, frame='icrs', unit='degree')
         c_icrs_max = SkyCoord(ra=ra_max, dec=dec_max, frame='icrs', unit='degree')
@@ -428,10 +431,13 @@ class SkyCatalogue():
         
         print("Generating sky catalog...")
         for ra_c, dec_c in zip(ra_coords,dec_coords):
-            print(f"> Generating sky catalog for square RA,DEC ({ra_c}, {dec_c}) to ({ra_c+1}, {dec_c+1})..")
-            cat, overlap = self.create_degree_square(ra_c, dec_c, query_df, plot_image)
-            larger_catalogue = pd.concat([larger_catalogue,cat],axis=0).reset_index(drop=True)
-            overlap_store.append(overlap)
+            print(f"> Generating sky catalog for square RA,DEC ({ra_c}, {dec_c}) to ({ra_c+1}, {dec_c+1})...")
+            if self.galactic_check(ra_c, dec_c, 1):
+                cat, overlap = self.create_degree_square(ra_c, dec_c, query_df, plot_image)
+                larger_catalogue = pd.concat([larger_catalogue,cat],axis=0).reset_index(drop=True)
+                overlap_store.append(overlap)
+            else:
+                print(f"1-degree square with corner {ra}, {dec} intersects with the galactic plane!")
             # print('Added (' + str(ra) + ', ' + str(dec) + ') to catalogue')
         
         print("Removing positions from overlapping regions...")
@@ -449,14 +455,14 @@ class SkyCatalogue():
         
         return catalogue
     
-    def all_sky(self, query_dist=5.0, max_dec=30, max_ra=360):
+    def all_sky(self, query_dist=5.0, min_dec=-90, min_ra=0, max_dec=30, max_ra=360):
         """Loop through the entire sky."""
         
         print("================= WHOLE SKY =================")
         # use 5 degree squares
         
-        dec_range = np.arange(-90, max_dec, query_dist)
-        ra_range = np.arange(0, max_ra, query_dist)
+        dec_range = np.arange(min_dec, max_dec, query_dist)
+        ra_range = np.arange(min_ra, max_ra, query_dist)
         # dec_range = np.arange(-90, 30, query_dist)
         # ra_range = np.arange(0, 360, query_dist)
         
@@ -468,15 +474,18 @@ class SkyCatalogue():
         
         for ra_c, dec_c in zip(ra_coords, dec_coords):
             print(f"{query_dist}-degree square starting from RA,DEC = {ra_c}, {dec_c} ========================")
-            cat, overlap = self.create_catalogue(ra_c, dec_c, query_dist=query_dist, allsky=True)
-            larger_catalogue = pd.concat([larger_catalogue,cat],axis=0).reset_index(drop=True)
-            overlap_store.append(overlap)
+            if self.galactic_check(ra_c, dec_c, query_dist):
+                cat, overlap = self.create_catalogue(ra_c, dec_c, query_dist=query_dist, allsky=True)
+                larger_catalogue = pd.concat([larger_catalogue,cat],axis=0).reset_index(drop=True)
+                overlap_store.append(overlap)
+            else:
+                print(f"{query_dist}-degree square starting from RA,DEC = {ra_c}, {dec_c} intersects with the galactic plane!")
             
         print("WHOLE SKY: Removing positions from overlapping regions...")
         catalogue = larger_catalogue
         catalogue = self.remove_overlap_positions(ra_coords, dec_coords, overlap_store, larger_catalogue, bounds=query_dist)
         print("================= Done! =================")
-        return catalogue, ra_coords, dec_coords, overlap_store, larger_catalogue
+        return catalogue, ra_coords, dec_coords, overlap_store
         
         
         
