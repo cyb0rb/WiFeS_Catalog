@@ -125,72 +125,24 @@ class SkyCatalogue():
         ra_max = ra + dist
         dec_min=dec
         dec_max = dec + dist
-
-        if self.bands == ('g','r','i','z'):
-            query = f"""
-            SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
+        
+        mags = [f"mag_{b}" for b in self.bands]
+        conditions = [f"({mag}<=21 AND {mag}>=16)" for mag in mags]
+        
+        query = f"""
+            SELECT ra, dec, {", ".join(mags)}
             FROM ls_dr10.tractor_s
             WHERE ra >= ({ra_min}) AND ra < ({ra_max})
             AND dec >= ({dec_min}) AND dec < ({dec_max})
-            AND (mag_g<=21 AND mag_g>=16
-                OR mag_r<=21 AND mag_r>=16
-                OR mag_i<=21 AND mag_i>=16
-                OR mag_z<=21 AND mag_z>=16)       
-            """
-        elif self.bands == ('g', 'r', 'i'):
-            query = f"""
-            SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
-            FROM ls_dr10.tractor_s
-            WHERE ra >= ({ra_min}) AND ra < ({ra_max})
-            AND dec >= ({dec_min}) AND dec < ({dec_max})
-            AND (mag_g<=21 AND mag_g>=16
-                OR mag_r<=21 AND mag_r>=16
-                OR mag_i<=21 AND mag_i>=16)      
-            """
-        elif self.bands == ('g','r'):
-            query = f"""
-            SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
-            FROM ls_dr10.tractor_s
-            WHERE ra >= ({ra_min}) AND ra < ({ra_max})
-            AND dec >= ({dec_min}) AND dec < ({dec_max})
-            AND (mag_g<=21 AND mag_g>=16
-                OR mag_r<=21 AND mag_r>=16)     
-            """
-        elif self.bands ==('g'):
-            query = f"""
-            SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
-            FROM ls_dr10.tractor_s
-            WHERE ra >= ({ra_min}) AND ra < ({ra_max})
-            AND dec >= ({dec_min}) AND dec < ({dec_max})
-            AND mag_g<=21 AND mag_g>=16   
+            AND ({" OR ".join(conditions)})       
             """
         
         # check if this completes successfuly
         brick_info = qc.query(sql=query, fmt="pandas")
 
-        mag = []
-        passband = []
-        brick_info = brick_info.replace([np.inf], np.nan)
-
-        for n in range(len(brick_info['mag_g'])):
-            if pd.notna(brick_info['mag_g'][n]):
-                mag.append(brick_info['mag_g'][n])
-                passband.append('g')
-            elif pd.notna(brick_info['mag_r'][n]):
-                mag.append(brick_info['mag_r'][n])
-                passband.append('r')
-            elif pd.notna(brick_info['mag_i'][n]):
-                mag.append(brick_info['mag_i'][n])
-                passband.append('i')
-            elif pd.notna(brick_info['mag_z'][n]):
-                mag.append(brick_info['mag_z'][n])
-                passband.append('z')
-            else:
-                brick_info = brick_info.drop(brick_info.iloc['mag'][n])
-
-        brick_info = brick_info.drop(['mag_g','mag_r','mag_i','mag_z'], axis=1)
-        brick_info['mag'] = mag
-        brick_info['passband'] = passband
+        # set "mag" column to the minimum magnitude from the given bands
+        brick_info.loc[:,"mag"] = np.nanmin(brick_info.iloc[:,2:].values, axis=1)
+        brick_info = brick_info.drop(mags, axis=1)
 
         return brick_info
     
@@ -247,7 +199,7 @@ class SkyCatalogue():
         # print(catalog_box['radius'].isna().sum())
         
         # remove g mag
-        catalog_box = catalog_box.drop(['mag','passband'], axis=1)
+        catalog_box = catalog_box.drop(['mag'], axis=1)
         
         # combine catalog + mask
         all_stars = pd.concat([masked_box, catalog_box]).reset_index(drop=True)
