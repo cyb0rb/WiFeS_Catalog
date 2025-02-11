@@ -204,7 +204,13 @@ class SkyCatalogue():
             mask_array_byteswap = mask_array.byteswap().newbyteorder()
             masked_stars = pd.DataFrame(mask_array_byteswap)
             all_masks.append(masked_stars)
-                
+        
+        with np.load(f"mask_data_files/mask_data_galaxies.npz", mmap_mode='r') as mask_data:
+            mask_array = mask_data['arr_0']
+            mask_array_byteswap = mask_array.byteswap().newbyteorder()
+            masked_stars = pd.DataFrame(mask_array_byteswap)
+            all_masks.append(masked_stars)
+            
         self.mask_df = pd.concat(all_masks, ignore_index=True)
     
     # @timer
