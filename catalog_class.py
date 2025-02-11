@@ -96,7 +96,7 @@ class SkyCatalogue():
         return True
 
     
-    def query_tractor(self, ra, dec, dist, bands):
+    def query_tractor(self, ra, dec, dist=1.0, **kwargs):
         """Queries the Astro Data Lab for the ra, dec and mag of the objects within a square of side length (dist).     
         The queried square will range from (ra, dec) to (ra+dist/2, dec+dist/2)
         
@@ -108,6 +108,8 @@ class SkyCatalogue():
             Declination of bottom left corner of square (degrees)
         dist: `float`
             Side length of square region to query (degrees)
+            
+        optional keyword arguments:
         bands: `tuple` `str`
             Bands to query for objects from the selection of ('g', 'r', 'i', 'z')
             Where objects are detected in multiple bands, the one with the brightest magnitude will be selected
@@ -117,6 +119,10 @@ class SkyCatalogue():
         brick_info: `pd.DataFrame`
             Pandas DataFrame containing columns: `ra`, `dec`, `mag`, `passband`
         """
+        
+        if 'bands' in kwargs.keys():
+            self.bands = kwargs['bands']
+        
         # Bounds of the square we are querying objects for based on the mode
         if self.mode=="corner":
             ra_min=ra
@@ -362,13 +368,17 @@ class SkyCatalogue():
         return [min_ra, min_dec, max_ra, max_dec]
 
     # @timer
-    def create_degree_square(self, ra, dec, catalog_df, plot_image=False):
+    def create_degree_square(self, ra, dec, catalog_df=None, plot_image=False, add_query=False):
         """Generates dark sky positions for a 1 x 1 degree region of the sky with lower "corner" given by (ra,dec)
         """
         if self.mode=="corner":
             coords = [ra, ra+self.map_dist, dec, dec+self.map_dist]
         if self.mode=="centre":
             coords=[ra-self.map_dist/2, ra+self.map_dist/2, dec-self.map_dist/2, dec+self.map_dist/2]
+            
+        if add_query:
+            print(f">> Querying the tractor catalog for stars from RA/DEC({coords[0]}, {coords[2]}) to ({coords[1]}, {coords[3]})...")
+            catalog_df = self.query_tractor(ra, dec, dist=1)
         # print(">>>> Generating dark sky positions of 1-degree square...")
         print(">>>> Combining mask and queried stars...")
         all_stars = self.combine_data(catalog_df, coords)
@@ -424,7 +434,7 @@ class SkyCatalogue():
         return catalogue
         
     # @timer
-    def create_catalogue(self, ra, dec, query_dist, plot_image=False, allsky=False):
+    def create_catalogue(self, ra, dec, query_dist, plot_image=False, allsky=False, **kwargs):
         """Creates catalog of sky positions in a square starting from a bottom-left corner of (ra, dec)
         up to (ra+query_dist, dec+query_dist) using a single query to the LSDR10 tractor catalog.
         
@@ -442,11 +452,20 @@ class SkyCatalogue():
             Whether to return a list of min/max ra/dec radial extents for stars in the square
             (used for all-sky generation)
         
+        optional keyword arguments:
+        bands: `tuple` `str`
+            Bands to query for objects from the selection of ('g', 'r', 'i', 'z')
+            Where objects are detected in multiple bands, the one with the brightest magnitude will be selected
+        
         Returns
         -------
         catalogue: `DataFrame`
             DataFrame of dark sky positions containing columns: `ra`, `dec`
         """
+        
+        if 'bands' in kwargs.keys():
+            self.bands = kwargs['bands']
+        
         if self.mode=="corner":
             print(f"> Creating sky catalog from one {query_dist}-degree square starting from ({ra}, {dec}) to ({ra+query_dist}, {dec+query_dist})")
             # query sky for some amount
@@ -507,19 +526,57 @@ class SkyCatalogue():
         return catalogue
     
     # @timer
-    def all_sky(self, bands=('g','r','i','z'), query_dist=5.0, min_ra=0, min_dec=-90, max_ra=360, max_dec=30, **kwargs):
-        """Loop through the entire sky."""
+    def all_sky(self, ra_allsky=0, dec_allsky=-90, sky_dist=10.0, query_dist=2.0, full_sky=False, **kwargs):
+        """Loop through the entire sky.
+        
+        Parameters
+        ----------
+        ra_allsky
+            starting ra (default=0)
+        dec_allsky
+            starting dec (default=-90)
+        sky_dist
+            size of ra/dec square to create a catalog over (default=10)
+        query_dist
+            size of smaller query-sized subdivisions (default=2)
+        full_sky
+            If true, generate positions over the range of the entire sky from (0, -90) to (360, 30)
+            
+        optional keyword argument:
+        bands: `tuple` `str`
+            Bands to query for objects from the selection of ('g', 'r', 'i', 'z')
+            Where objects are detected in multiple bands, the one with the brightest magnitude will be selected
+        """
+        
+        print("================= WHOLE SKY =================")
         
         if 'bands' in kwargs.keys():
             self.bands = kwargs['bands']
         
-        print("================= WHOLE SKY =================")
-        print(f"===== From {min_ra},{min_dec} to {max_ra},{max_dec} in {query_dist}^2 squares ======")
+        # make sure sky distance is larger than query distance for consistency
+        if query_dist > sky_dist:
+            print(f"Your query distance ({query_dist}) is larger than the sky distance ({sky_dist}) you're trying to cover!")
+            print(f"Either reduce your query distance, or use the SkyCatalogue.create_catalogue() method instead.")
+            return
+            
+        if full_sky:
+            dec_range = np.arange(-90, 30, query_dist)
+            ra_range = np.arange(0, 360, query_dist)
+        if self.mode=="corner":
+            dec_range = np.arange(dec_allsky, dec_allsky+sky_dist, query_dist)
+            ra_range = np.arange(ra_allsky, ra_allsky+sky_dist, query_dist)
+            print(f"===== From ({ra_allsky}, {dec_allsky}) to ({ra_allsky+sky_dist}, {dec_allsky+sky_dist}) in {len(dec_range)} {query_dist}^2 squares ======")
+        elif self.mode=="centre":
+            # make array of ra / dec starting points for degree cubes
+            dec_range = np.arange(dec_allsky-sky_dist/2, dec_allsky+sky_dist/2, query_dist)
+            ra_range = np.arange(ra_allsky-sky_dist/2, ra_allsky+sky_dist/2, query_dist)
+            print(f"===== From ({ra_allsky-sky_dist/2}, {dec_allsky-sky_dist/2}) to ({ra_allsky+sky_dist/2}, {dec_allsky+sky_dist/2}) in {len(dec_range)} {query_dist}^2 squares ======")
+        
         print(f"===== Bands used: {self.bands} =====")
         # use 5 degree squares
         
-        dec_range = np.arange(min_dec, max_dec, query_dist)
-        ra_range = np.arange(min_ra, max_ra, query_dist)
+        # dec_range = np.arange(min_dec, max_dec, query_dist)
+        # ra_range = np.arange(min_ra, max_ra, query_dist)
         
         coord_grid = np.meshgrid(ra_range, dec_range)
         ra_coords = coord_grid[0].flatten()
