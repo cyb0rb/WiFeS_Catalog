@@ -35,13 +35,14 @@ def timer(func):
 class SkyCatalogue():
     
     # @timer
-    def __init__(self, bands=('g','r','i','z'), map_dist=1.0, mask_radius=20, fov=45):
+    def __init__(self, mode="corner" bands=('g','r','i','z'), map_dist=1.0, mask_radius=20, fov=45):
         
         self.bands = bands
         self.map_dist = map_dist
         self.dim = int((3600*4) * self.map_dist)
         self.mask_radius = mask_radius
         self.fov = fov
+        self.mode= mode
         
         # load all masked stars
         print("Loading masked star data....")
@@ -67,11 +68,17 @@ class SkyCatalogue():
         
         Returns False if square falls within forbidden region, True otherwise
         """
+        if self.mode=="corner":
+            ra_min=ra
+            ra_max = ra + dist
+            dec_min=dec
+            dec_max = dec + dist
 
-        ra_min=ra
-        ra_max = ra + dist
-        dec_min=dec
-        dec_max = dec + dist
+        if self.mode=="centre":
+            ra_min=ra-dist/2
+            ra_max = ra + dist/2
+            dec_min=dec-dist/2
+            dec_max = dec + dist/2
 
         # check if in LMC
         if (ra_min >=76) and (ra_max <= 86) and (dec_min >= -76) and (dec_max <= -64):
@@ -120,11 +127,19 @@ class SkyCatalogue():
         brick_info: `DataFrame`
             Pandas DataFrame containing columns: `ra`, `dec`, `mag`, `passband`
         """
-        # Bounds of the square we are querying objects for
-        ra_min=ra
-        ra_max = ra + dist
-        dec_min=dec
-        dec_max = dec + dist
+        # Bounds of the square we are querying objects for based on the mode
+        if self.mode=="corner":
+            ra_min=ra
+            ra_max = ra + dist
+            dec_min=dec
+            dec_max = dec + dist
+
+        if self.mode=="centre":
+            ra_min=ra-dist/2
+            ra_max = ra + dist/2
+            dec_min=dec-dist/2
+            dec_max = dec + dist/2
+      
 
         if self.bands == ('g','r','i','z'):
             query = f"""
@@ -378,8 +393,10 @@ class SkyCatalogue():
     def create_degree_square(self, ra, dec, catalog_df, plot_image=False):
         """Generates dark sky positions for a 1 x 1 degree region of the sky with lower "corner" given by (ra,dec)
         """
-        
-        coords = [ra, ra+1, dec, dec+1]
+        if self.mode=="corner":
+            coords = [ra, ra+self.map_dist, dec, dec+self.map_dist]
+        if self.mode=="centre":
+            coords=[ra-self.map_dist/2, ra+self.map_dist/2, dec-self.map_dist/2, dec+self.map_dist/2]
         # print(">>>> Generating dark sky positions of 1-degree square...")
         print(">>>> Combining mask and queried stars...")
         all_stars = self.combine_data(catalog_df, coords)
@@ -436,7 +453,7 @@ class SkyCatalogue():
         return catalogue
         
     # @timer
-    def create_catalogue(self, ra, dec, query_dist=1.0, plot_image=False, allsky=False):
+    def create_catalogue(self, ra, dec, plot_image=False, allsky=False):
         """Creates catalog of sky positions in a square starting from a bottom-left corner of (ra, dec)
         up to (ra+query_dist, dec+query_dist) using a single query to the LSDR10 tractor catalog.
         
@@ -461,11 +478,21 @@ class SkyCatalogue():
         """
         
         
-        print(f"> Creating sky catalog from one {query_dist}-degree square starting from ({ra}, {dec}) to ({ra+query_dist}, {dec+query_dist})")
+        print(f"> Creating sky catalog from one {self.map_dist}-degree square starting from ({ra}, {dec}) to ({ra+self.map_dist}, {dec+self.map_dist})")
         # query sky for some amount
-        print(f">> Querying the tractor catalog for stars from RA/DEC({ra}, {dec}) to ({ra+query_dist}, {dec+query_dist})...")
-        query_df = self.query_tractor(ra, dec, query_dist)
-        
+        print(f">> Querying the tractor catalog for stars from RA/DEC({ra}, {dec}) to ({ra+self.map_dist}, {dec+self.map_dist})...")
+        query_df = self.query_tractor(ra, dec, self.map_dist)
+        if self.mode=="corner":
+            ra_min=ra
+            ra_max = ra + self.map_dist
+            dec_min=dec
+            dec_max = dec + self.dist
+
+        if self.mode=="centre":
+            ra_min=ra-self.map_dist/2
+            ra_max = ra + self.map_dist/2
+            dec_min=dec-self.map_dist/2
+            dec_max = dec + self.map_dist/2
         # make array of ra / dec starting points for degree cubes
         dec_range = np.arange(dec, dec+query_dist)
         ra_range = np.arange(ra, ra+query_dist)
