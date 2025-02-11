@@ -98,7 +98,7 @@ class SkyCatalogue():
         return True
 
     
-    # @timer
+    @timer
     def query_tractor(self, ra, dec, dist=1.0):
         """Queries the Astro Data Lab for the ra, dec and mag of the objects within a square of side length (dist).     
         The queried square will range from (ra, dec) to (ra+dist, dec+dist)
@@ -272,7 +272,7 @@ class SkyCatalogue():
 
         return all_stars
     
-    # @timer
+    @timer
     @profile
     def seg_map(self, star_data:pd.DataFrame):
         """Creates segementation map of shape (`dim`, `dim`) based on the mask locations and pixel data of `star_data`"""
@@ -281,10 +281,11 @@ class SkyCatalogue():
         array = np.zeros(self.dim**2, dtype=int)
         radec = np.asarray([star_data['dec_pix'],star_data['ra_pix']]).T
         circle_points = self.distance_tree.query_radius(radec, star_data['rad_pix'])
+        # circle_points = np.unique(np.concatenate(circle_points))
         # print("Putting points on array...")
         for circle_array in circle_points:
             np.put(array, circle_array, 1)
-        print("Done!")        
+        # print("Done!")        
         array = array.reshape((self.dim, self.dim))
 
         return array
