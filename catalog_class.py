@@ -265,7 +265,20 @@ class SkyCatalogue():
         return all_stars
     
     def seg_map(self, star_data:pd.DataFrame):
-        """Creates segementation map of shape (`dim`, `dim`) based on the mask locations and pixel data of `star_data`"""
+        """Creates segementation map of shape (`dim`, `dim`) based on the mask locations and pixel data of `star_data`.
+        
+        Parameters
+        ----------
+        star_data : `pd.DataFrame`
+            Minimum and maxiumum pixel values of all object coordinates along with radius
+            Contains columns ra, dec, radius, max_ra, min_ra, max_dec, min_dec, ra_pix, dec_pix, rad_pix
+
+        Returns
+        -------
+        array : `np.ndarray`
+            Binary array of the forbidden and allowed regions (segmentation map)
+            Value 1 if forbidden, 0 if allowed
+        """
 
         array = np.zeros(self.dim**2, dtype=int)
         radec = np.asarray([star_data['dec_pix'],star_data['ra_pix']]).T
@@ -279,7 +292,8 @@ class SkyCatalogue():
         return array
     
     def define_grid(self):
-        """Creates gridlines and centers on pixels for the initialized dimension and field of view"""
+        """Creates gridlines and centers on pixels for the initialized dimension and field of view."""
+
         self.gridlines = np.arange(0, self.dim+1, (self.fov/3600 * self.dim))
         centers = []
 
@@ -289,8 +303,22 @@ class SkyCatalogue():
         self.x_cen, self.y_cen = np.meshgrid(centers, centers)
         return
     
-    # @timer
     def find_dark_regions(self, segmap):
+        """Iterates through grid squares to collect those which do not intersect with forbidden regions.
+        
+        Parameters
+        ----------
+        segmap : `np.ndarray`
+            Binary array of forbidden and allowed regions (segmentation map)
+            Value 1 if forbidden, 0 if allowed
+
+        Returns
+        -------
+        dr_trans : `np.ndarray`
+            Transverse coordinates of grid square centres designated as allowed dark regions
+        dark_regions: `list`
+            List of coordinates (ra,dec) that represent centres of grid squares of allowed dark regions
+        """
 
         dark_regions = []
 
@@ -306,8 +334,21 @@ class SkyCatalogue():
 
         return dr_trans, dark_regions
 
-    # @timer
     def create_plot(self, array, coords, pix_coords, dr_trans):
+        """Draws a plot of forbidden and allowed grid squares to centre the fov on to obtain a dark position.
+        
+        Parameters
+        ----------
+        array : `np.ndarray'
+            Binary array of forbidden and allowed regions (segmentation map)
+            Value 1 if forbidden, 0 if allowed
+        coords : `list`
+            List of bounds of the selected region in order ra_min, ra_max, dec_min, dec_max
+        pix_coords : `list`
+            Pixel values of plot bounds in order ra_min, ra_max, dec_min, dec_max
+        dr_trans : `np.ndarray`
+            Transverse coordinates of grid square centres designated as allowed dark regions
+        """
 
         # Creating exclusion map with grid
         fig = plt.figure(figsize=(8,8))
@@ -332,9 +373,23 @@ class SkyCatalogue():
         plt.show()
 
         return
-    
-    # @timer
+
     def create_data_frame(self, dark_regions, coords):
+        """Creates a dataframe of allowed dark region within certain coordinate bounds.
+        
+        Parameters
+        ----------
+        dark_regions : `list`
+            List of coordinates (ra,dec) that represent centres of grid squares of allowed dark regions
+        coords : `list`
+            List of bounds of the selected region in order ra_min, ra_max, dec_min, dec
+
+        Returns
+        -------
+        dark_catalogue : `pd.DataFrame`
+            Contains coordinates of allowed dark regions within the selected region
+            Columns are ra, dec
+        """
         dark_ra = []
         dark_dec = []
 
@@ -347,13 +402,20 @@ class SkyCatalogue():
         dark_catalogue = pd.DataFrame({'ra':dark_ra, 'dec':dark_dec})
         return dark_catalogue
     
-    # @timer
     def find_overlapping_extent(self, all_stars):
-        # grab everything in a 1 degree square
-        # print(f"Finding everything within the square RA=({ra}, {ra+1}) and DEC=({dec}, {dec+1})")
-        
-        # degree_masks = all_stars.query(f'({ra} < ra < {ra+1}) & ({dec} < dec < {dec+1})')
+        """Identifies the maximum extent to which the masked exclusion zone of an object within
+        one section of the sky may overlap into another section of the sky.
 
+        Parameters
+        ----------
+        all_stars : `pd.DataFrame`
+            Columns min_ra, max_ra, min_dec, max_dec which give the extent of the masked exclusion zone of each object
+
+        Returns
+        -------
+        'list'
+            Minimum and maximum right ascension and declinations of the maximum overlap of one sky segment into another
+        """
         min_ra = all_stars['min_ra'].min()
         min_dec = all_stars['min_dec'].min()
         max_ra = all_stars['max_ra'].max()
@@ -361,9 +423,26 @@ class SkyCatalogue():
         
         return [min_ra, min_dec, max_ra, max_dec]
 
-    # @timer
     def create_degree_square(self, ra, dec, catalog_df, plot_image=False):
-        """Generates dark sky positions for a 1 x 1 degree region of the sky with lower "corner" given by (ra,dec)
+        """Generates dark sky positions for a 1 x 1 degree region of the sky with user specified
+        mode "corner" or "centre" determining the position of given ra, dec coordinate within square region.
+
+        Parameters
+        ----------
+        ra : `float`
+            If mode "corner" then right ascension coordinate of the bottom left corner of square
+            If mode "centre" then right ascension coordinate of centre of square region
+        dec : `float`
+            If mode "corner" then declination coordinate of bottom left corner of square
+            If mode "centre" then declination coordinate of centre of square region
+        catalog_df : `pd.DataFrame`
+            Tractor catalogue of objects and magnitudes within specified 1 x 1 degree region
+            Columns are ra, dec, mag
+        plot_image : `bool` (default=False)
+            If True then plots the square region and the allowed dark regions
+
+        Returns
+        -------
         """
         if self.mode=="corner":
             coords = [ra, ra+self.map_dist, dec, dec+self.map_dist]
@@ -546,7 +625,7 @@ class SkyCatalogue():
         
         
         
-if __name__=="__main__":
+if __name__=="__main__": 
     
     # catalog = SkyCatalogue()
     catalog_g_band = SkyCatalogue(all_bands=False)
