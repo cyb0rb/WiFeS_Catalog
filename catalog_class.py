@@ -424,7 +424,7 @@ class SkyCatalogue():
         return catalogue
         
     # @timer
-    def create_catalogue(self, ra, dec, plot_image=False, allsky=False):
+    def create_catalogue(self, ra, dec, query_dist, plot_image=False, allsky=False):
         """Creates catalog of sky positions in a square starting from a bottom-left corner of (ra, dec)
         up to (ra+query_dist, dec+query_dist) using a single query to the LSDR10 tractor catalog.
         
@@ -448,22 +448,22 @@ class SkyCatalogue():
             DataFrame of dark sky positions containing columns: `ra`, `dec`
         """
         if self.mode=="corner":
-            print(f"> Creating sky catalog from one {self.map_dist}-degree square starting from ({ra}, {dec}) to ({ra+self.map_dist}, {dec+self.map_dist})")
+            print(f"> Creating sky catalog from one {query_dist}-degree square starting from ({ra}, {dec}) to ({ra+query_dist}, {dec+query_dist})")
             # query sky for some amount
-            print(f">> Querying the tractor catalog for stars from RA/DEC({ra}, {dec}) to ({ra+self.map_dist}, {dec+self.map_dist})...")
-            query_df = self.query_tractor(ra, dec, self.map_dist)
+            print(f">> Querying the tractor catalog for stars from RA/DEC({ra}, {dec}) to ({ra+query_dist}, {dec+query_dist})...")
+            query_df = self.query_tractor(ra, dec, query_dist)
             # make array of ra / dec starting points for degree cubes
-            dec_range = np.arange(dec, dec+self.map_dist)
-            ra_range = np.arange(ra, ra+self.map_dist)
+            dec_range = np.arange(dec, dec+query_dist)
+            ra_range = np.arange(ra, ra+query_dist)
 
         if self.mode=="centre":
-            print(f"> Creating sky catalog from one {self.map_dist}-degree square starting from ({ra-self.map_dist/2}, {dec-self.map_dist/2}) to ({ra+self.map_dist/2}, {dec+self.map_dist/2})")
+            print(f"> Creating sky catalog from one {query_dist}-degree square starting from ({ra-query_dist/2}, {dec-query_dist/2}) to ({ra+query_dist/2}, {dec+query_dist/2})")
             # query sky for some amount
-            print(f">> Querying the tractor catalog for stars from RA/DEC({ra-self.map_dist/2}, {dec-self.map_dist/2}) to ({ra+self.map_dist/2}, {dec+self.map_dist/2})...")
-            query_df = self.query_tractor(ra, dec, self.map_dist)
+            print(f">> Querying the tractor catalog for stars from RA/DEC({ra-query_dist/2}, {dec-query_dist/2}) to ({ra+query_dist/2}, {dec+query_dist/2})...")
+            query_df = self.query_tractor(ra, dec, query_dist)
             # make array of ra / dec starting points for degree cubes
-            dec_range = np.arange(dec-self.map_dist/2, dec+self.map_dist/2)
-            ra_range = np.arange(ra-self.map_dist/2, ra+self.map_dist/2)
+            dec_range = np.arange(dec-query_dist/2, dec+query_dist/2)
+            ra_range = np.arange(ra-query_dist/2, ra+query_dist/2)
         
         coord_grid = np.meshgrid(ra_range, dec_range)
         ra_coords = coord_grid[0].flatten()
@@ -487,7 +487,7 @@ class SkyCatalogue():
         catalogue = self.remove_overlap_positions(ra_coords, dec_coords, overlap_store, larger_catalogue)
         
         if allsky:
-            print(f">> Finding largest overlap for whole {self.map_dist}-degree square...")
+            print(f">> Finding largest overlap for whole {query_dist}-degree square...")
             overlap_store = np.asarray(overlap_store)
             if overlap_store.shape[0] > 1:
                 min_ra = np.min(overlap_store[:, 0])
