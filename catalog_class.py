@@ -495,8 +495,8 @@ class SkyCatalogue():
             coords=[ra-self.map_dist/2, ra+self.map_dist/2, dec-self.map_dist/2, dec+self.map_dist/2]
             
         if add_query:
-            verboseprint(f">> Querying the tractor catalog for stars from RA/DEC({coords[0]}, {coords[2]}) to ({coords[1]}, {coords[3]})...")
-            catalog_df = self.query_tractor(ra, dec, dist=1)
+            print(f">> Querying the tractor catalog for stars from RA/DEC({coords[0]}, {coords[2]}) to ({coords[1]}, {coords[3]})...")
+            catalog_df = self.query_tractor(ra, dec, dist=self.map_dist)
         # print(">>>> Generating dark sky positions of 1-degree square...")
         verboseprint(">>>> Combining mask and queried stars...")
         all_stars = self.combine_data(catalog_df, coords)
@@ -549,10 +549,16 @@ class SkyCatalogue():
         for ra, dec, overlap in zip(ra_coords, dec_coords, overlap_store):
             
             # make sure this works if ra/dec extents are less than the actual bounds!
-            min_ra = overlap[0] if overlap[0] < ra else ra
-            min_dec = overlap[1] if overlap[1] < dec else dec
-            max_ra = overlap[2] if overlap[2] > ra+bounds else ra+bounds
-            max_dec = overlap[3] if overlap[3] > dec+bounds else dec+bounds
+            if self.mode=="corner":
+                min_ra = overlap[0] if overlap[0] < ra else ra
+                min_dec = overlap[1] if overlap[1] < dec else dec
+                max_ra = overlap[2] if overlap[2] > ra+bounds else ra+bounds
+                max_dec = overlap[3] if overlap[3] > dec+bounds else dec+bounds
+            elif self.mode=="centre":
+                min_ra = overlap[0] if overlap[0] < ra-bounds/2 else ra-bounds/2
+                min_dec = overlap[1] if overlap[1] < dec-bounds/2 else dec-bounds/2
+                max_ra = overlap[2] if overlap[2] > ra+bounds/2 else ra+bounds/2
+                max_dec = overlap[3] if overlap[3] > dec+bounds/2 else dec+bounds/2
             
             # everything within square bounded by ra / dec and bounds that you're checking
             smaller_box = dark_catalogue.query(f'({ra} < ra < {ra + bounds}) & ({dec} < dec < {dec + bounds})') 
@@ -608,8 +614,8 @@ class SkyCatalogue():
             verboseprint(f">> Querying the tractor catalog for stars from RA/DEC({ra}, {dec}) to ({ra+query_dist}, {dec+query_dist})...")
             query_df = self.query_tractor(ra, dec, query_dist)
             # make array of ra / dec starting points for degree cubes
-            dec_range = np.arange(dec, dec+query_dist)
-            ra_range = np.arange(ra, ra+query_dist)
+            dec_range = np.arange(dec, dec+query_dist, self.map_dist)
+            ra_range = np.arange(ra, ra+query_dist, self.map_dist)
 
         if self.mode=="centre":
             print(f"> Creating sky catalog from one {query_dist}-degree square starting from ({ra-query_dist/2}, {dec-query_dist/2}) to ({ra+query_dist/2}, {dec+query_dist/2})")
@@ -617,8 +623,8 @@ class SkyCatalogue():
             verboseprint(f">> Querying the tractor catalog for stars from RA/DEC({ra-query_dist/2}, {dec-query_dist/2}) to ({ra+query_dist/2}, {dec+query_dist/2})...")
             query_df = self.query_tractor(ra, dec, query_dist)
             # make array of ra / dec starting points for degree cubes
-            dec_range = np.arange(dec-query_dist/2, dec+query_dist/2)
-            ra_range = np.arange(ra-query_dist/2, ra+query_dist/2)
+            dec_range = np.arange(dec-query_dist/2, dec+query_dist/2, self.map_dist)
+            ra_range = np.arange(ra-query_dist/2, ra+query_dist/2, self.map_dist)
         
         coord_grid = np.meshgrid(ra_range, dec_range)
         ra_coords = coord_grid[0].flatten()
@@ -628,14 +634,15 @@ class SkyCatalogue():
         
         verboseprint(">> Looping through sky coordinates...")
         for ra_c, dec_c in zip(ra_coords,dec_coords):
-            verboseprint(f">>> Generating sky catalog for square RA,DEC ({ra_c}, {dec_c}) to ({ra_c+1}, {dec_c+1})...")
-            if self.galactic_check(ra_c, dec_c, 1):
+            print(f">>> Generating sky catalog for square RA,DEC ({ra_c}, {dec_c}) to ({ra_c+self.map_dist}, {dec_c+self.map_dist})...")
+            if self.galactic_check(ra_c, dec_c, self.map_dist):
                 cat, overlap = self.create_degree_square(ra_c, dec_c, query_df, plot_image)
                 dark__catalogue = pd.concat([dark__catalogue.astype(cat.dtypes),cat],axis=0).reset_index(drop=True)
                 overlap_store.append(overlap)
             else:
-                verboseprint(f">>> 1-degree square intersects with the galactic plane!")
-                overlap_store.append([ra, dec, ra+1, dec+1])
+                print(f">>> {self.map_dist}-degree square intersects with the galactic plane!")
+                overlap_store.append([ra, dec, ra+self.map_dist, dec+self.map_dist])
+            # print('Added (' + str(ra) + ', ' + str(dec) + ') to catalogue')
         
         verboseprint(">> Removing positions from overlapping regions...")
         dark_catalogue = self.remove_overlap_positions(ra_coords, dec_coords, overlap_store, dark__catalogue)
