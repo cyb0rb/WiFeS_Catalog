@@ -15,19 +15,36 @@ class SkyCatalogue():
     
     # @timer
     def __init__(self, mode="corner", bands=('g','r','i','z'), map_dist=1.0, mask_radius=20, fov=45):
+        """ Initialise the SkyCatalogue object.
+
+        Parameters
+        ----------
+        mode : `str` (default="corner")
+            If "corner" then defines sky regions using user specified ra, dec as the bottom left corner of each square region
+            If "centre" then defines sky regions using user specified ra, dec as the centre of each square region
+        bands : `tuple` (default=('g', 'r', 'i', 'z'))
+            Selection of passbands applied for object detection
+        map_dist : `float` (default=1.0)
+            Side length of unit square region for initial dark sky identification handling (degrees)
+        mask_radius : `float` (default=20)
+            Minimum exlusion zone around object for telescope fov centre (arcseconds)
+            Recommended value is half telescope maximum field of view (i.e. 20 arcseconds for ANU 2.3m telescope dimensions)
+        fov : `float` (default=45)
+            Maximum telescope field of view, corresponding to side length of safe zone around identified dark sky positions (arcseconds)
+        """
         
         self.bands = bands
         self.map_dist = map_dist
         self.dim = int((3600*4) * self.map_dist)
         self.mask_radius = mask_radius
         self.fov = fov
-        self.mode= mode
+        self.mode = mode
         
         # load all masked stars
         print("Loading masked star data....")
         self.load_mask_data()
         
-        # define grid stuff
+        # define grid lines from fov
         print("Defining grid lines...")
         self.define_grid()
         
@@ -59,12 +76,13 @@ class SkyCatalogue():
         `bool`
             True if region is safe, False otherwise
         """
+        
+        # define square coordinate regions from user specified mode
         if self.mode=="corner":
             ra_min=ra
             ra_max = ra + dist
             dec_min=dec
             dec_max = dec + dist
-
         if self.mode=="centre":
             ra_min=ra-dist/2
             ra_max = ra + dist/2
@@ -79,17 +97,15 @@ class SkyCatalogue():
         if (ra_min >=11) and (ra_max <= 16) and (dec_min >= -76) and (dec_max <= -70):
             return False    
         
-        # check if in the gap near the galactic plane
+        # check if in Legacy Survey gap near the galactic plane
         if (ra_min >=43) and (ra_max <= 75) and (dec_min >= 10) and (dec_max <= 30):
             return False
 
         # check if on the galactic plane
         c_icrs_min = SkyCoord(ra=ra_min, dec=dec_min, frame='icrs', unit='degree')
         c_icrs_max = SkyCoord(ra=ra_max, dec=dec_max, frame='icrs', unit='degree')
-
         c_gal_min = c_icrs_min.galactic
         c_gal_max = c_icrs_max.galactic
-
         if abs(c_gal_min.b.value) <= 19 or abs(c_gal_max.b.value) <= 19:
             return False
 
@@ -131,6 +147,7 @@ class SkyCatalogue():
             dec_max = dec + dist/2
       
 
+        # run query based on user input
         mags = [f"mag_{b}" for b in self.bands]
         conditions = [f"({mag}<=21 AND {mag}>=16)" for mag in mags]
         
@@ -224,11 +241,9 @@ class SkyCatalogue():
         
         # apply buffer radius to mask and star data
         masked_box.loc[:, 'radius'] = masked_box['radius'] + (self.mask_radius / 3600.)
-        # TODO check for nan's / inf        
         catalog_box.loc[:, 'radius'] = self.calculate_mask_radius(catalog_box.loc[:,'mag'])
-        # print(catalog_box['radius'].isna().sum())
         
-        # remove g mag
+        # remove mag column
         catalog_box = catalog_box.drop(['mag'], axis=1)
         
         # combine catalog + mask
@@ -257,7 +272,6 @@ class SkyCatalogue():
         all_stars['min_dec'] = all_stars['dec'] - all_stars['radius']
 
         # ra, dec, and radius in pixels
-        # TODO check if off by one is needed?
         all_stars['ra_pix'] = np.round((all_stars['ra'] - coords[0]) * self.dim).astype(int) - 1
         all_stars['dec_pix'] = np.round((all_stars['dec'] - coords[2]) * self.dim).astype(int) - 1
         all_stars['rad_pix'] = np.ceil(all_stars['radius'] * self.dim).astype(int)
@@ -322,14 +336,16 @@ class SkyCatalogue():
 
         dark_regions = []
 
+        # define bounds of each grid square and iterate through
         for i in range(len(self.gridlines) - 1):
             for j in range(len(self.gridlines) - 1):
                 x_start, x_end = (self.gridlines[i]).astype(int), (self.gridlines[i + 1]).astype(int)
                 y_start, y_end = (self.gridlines[j]).astype(int), (self.gridlines[j + 1]).astype(int)
-                
+                # check for intersection between grid square and object, accept as dark region if none
                 if np.all(segmap[y_start:y_end, x_start:x_end] == 0):
                     dark_regions.append([self.x_cen[j, i], self.y_cen[j, i]])
 
+        # convert to transverse coordinates for easier plot handling
         dr_trans = np.array(dark_regions).transpose()
 
         return dr_trans, dark_regions
@@ -393,6 +409,7 @@ class SkyCatalogue():
         dark_ra = []
         dark_dec = []
 
+        # converting pixels back to sky coordinates
         for i in dark_regions:
             ra = i[0] / (self.dim) + coords[0]
             dec = i[1] / (self.dim) + coords[2]
@@ -416,6 +433,8 @@ class SkyCatalogue():
         'list'
             Minimum and maximum right ascension and declinations of the maximum overlap of one sky segment into another
         """
+
+        # identify the maximum mask extent which overlaps with neighbouring regions on each side of square 
         min_ra = all_stars['min_ra'].min()
         min_dec = all_stars['min_dec'].min()
         max_ra = all_stars['max_ra'].max()
@@ -443,6 +462,13 @@ class SkyCatalogue():
 
         Returns
         -------
+        dark_catalogue : `pd.DataFrame`
+            Contains catalogue of allowed dark sky regions within the selected 1 x 1 degree region
+            Columns are ra, dec
+
+        overlap : `list`
+            Minimum and maximum right ascension and declinations of the maximum overlap of one 1 x 1 degree region into another
+            In order; min_ra, min_dec, max_ra, max_dec
         """
         if self.mode=="corner":
             coords = [ra, ra+self.map_dist, dec, dec+self.map_dist]
@@ -474,9 +500,27 @@ class SkyCatalogue():
         print(">>>> Done!")
         return dark_catalogue, overlap
 
-    def remove_overlap_positions(self, ra_coords, dec_coords, overlap_store, larger_catalogue, bounds=1):
-        # overlap_store = [ [minra, mindec, maxra, maxdec] ]
-        catalogue = larger_catalogue.copy()
+    def remove_overlap_positions(self, ra_coords, dec_coords, overlap_store, dark_catalogue, bounds=1):
+        """Deletes dark sky positions on the edges of regions that fall into the masks of objects in neighbouring regions.
+
+        Parameters
+        ----------
+        ra_coords : `list`
+            Contains embedded list of right ascensions of all allowed dark sky positions for each coordinate within user specified query region
+        dec_coords : `list`
+            Contains embedded list of declinations of all allowed dark sky positions for each coordinate within user specified query region
+        overlap_store : `list`
+            Contains embedded list of maximum overlaps in ra, dec of each coordinate within user specified query region
+        dark_catalogue : `pd.DataFrame`
+            Contains catalogue of allowed dark sky regions within user specified query region
+            Columns are ra, dec
+
+        Returns
+        -------
+        dark_catalogue : `pd_DataFrame`
+            Overwritten catalogue of dark sky positions, with positions on the edges of regions that fall into the masks of objects in neighbouring regions removed
+            Columns are ra, dec
+        """
 
         # for each ra / dec square and associated overlap
         for ra, dec, overlap in zip(ra_coords, dec_coords, overlap_store):
@@ -488,43 +532,43 @@ class SkyCatalogue():
             max_dec = overlap[3] if overlap[3] > dec+bounds else dec+bounds
             
             # everything within square bounded by ra / dec and bounds that you're checking
-            smaller_box = catalogue.query(f'({ra} < ra < {ra + bounds}) & ({dec} < dec < {dec + bounds})') 
+            smaller_box = dark_catalogue.query(f'({ra} < ra < {ra + bounds}) & ({dec} < dec < {dec + bounds})') 
             
             # select everything within square bounded by the min/max ra/dec of the overlap store
-            bigger_box = catalogue.query(f'({min_ra} <= ra <= {max_ra}) & ({min_dec} <= dec <= {max_dec})')
+            bigger_box = dark_catalogue.query(f'({min_ra} <= ra <= {max_ra}) & ({min_dec} <= dec <= {max_dec})')
             
             # only perform removal if there are actually sky positions in the "overlap region"
             if smaller_box.shape < bigger_box.shape:
                 # everything that is in the bigger box but not the smaller one (within overlapping region)
                 overlap_region = pd.concat((bigger_box, smaller_box)).drop_duplicates(keep=False)
                 # concatenate the two and drop everything within the overlapping regions
-                catalogue = pd.concat((catalogue, overlap_region)).drop_duplicates(keep=False)
+                dark_catalogue = pd.concat((dark_catalogue, overlap_region)).drop_duplicates(keep=False)
                         
-        return catalogue
+        return dark_catalogue
         
-    # @timer
-    def create_catalogue(self, ra, dec, query_dist, plot_image=False, allsky=False):
-        """Creates catalog of sky positions in a square starting from a bottom-left corner of (ra, dec)
-        up to (ra+query_dist, dec+query_dist) using a single query to the LSDR10 tractor catalog.
+    def create_catalogue(self, ra, dec, query_dist, plot_image=False, return_overlaps=False):
+        """Creates catalog of dark sky positions in a square defined by ra, dec, and query_dist.
         
         Parameters
         ----------
-        ra: `float`
-            Right ascension of bottom left corner of square (degrees)
-        dec: `float`
-            Declination of bottom left corner of square (degrees)
-        query_dist: `float`
+        ra : `float`
+            If mode "corner" then right ascension of bottom left corner of square region (degrees)
+            If mode "centre" then right ascension of centre coordinate of square region (degrees)
+        dec : `float`
+            If mode "corner" then declination of bottom left corner of square region (degrees)
+            If mode "centre" then declination of centre coordinate of square region (degrees)
+        query_dist : `float`
             Side length of square to query (degrees)
-        plot_image: `bool`
-            Plot each square-degree analyzed for dark sky positions
-        all_sky: `bool`
-            Whether to return a list of min/max ra/dec radial extents for stars in the square
-            (used for all-sky generation)
+        plot_image : `bool` (default=False)
+            If True, plot the image of the region
+        return_overlaps : `bool` (default=False)
+            If True, then return list of mask overlaps between regions
+            Useful if finding dark sky positions in a larger sky region (5 x 5 degree and greater)
         
         Returns
         -------
-        catalogue: `DataFrame`
-            DataFrame of dark sky positions containing columns: `ra`, `dec`
+        dark_catalogue : `pd.DataFrame`
+            DataFrame of all dark sky positions withing user specified region containing columns ra, dec
         """
         if self.mode=="corner":
             print(f"> Creating sky catalog from one {query_dist}-degree square starting from ({ra}, {dec}) to ({ra+query_dist}, {dec+query_dist})")
@@ -548,14 +592,14 @@ class SkyCatalogue():
         ra_coords = coord_grid[0].flatten()
         dec_coords = coord_grid[1].flatten()
         overlap_store = []
-        larger_catalogue = pd.DataFrame(columns=['ra','dec'])
+        dark__catalogue = pd.DataFrame(columns=['ra','dec'])
         
         print(">> Looping through sky coordinates...")
         for ra_c, dec_c in zip(ra_coords,dec_coords):
             print(f">>> Generating sky catalog for square RA,DEC ({ra_c}, {dec_c}) to ({ra_c+1}, {dec_c+1})...")
             if self.galactic_check(ra_c, dec_c, 1):
                 cat, overlap = self.create_degree_square(ra_c, dec_c, query_df, plot_image)
-                larger_catalogue = pd.concat([larger_catalogue.astype(cat.dtypes),cat],axis=0).reset_index(drop=True)
+                dark__catalogue = pd.concat([dark__catalogue.astype(cat.dtypes),cat],axis=0).reset_index(drop=True)
                 overlap_store.append(overlap)
             else:
                 print(f">>> 1-degree square intersects with the galactic plane!")
@@ -563,9 +607,9 @@ class SkyCatalogue():
             # print('Added (' + str(ra) + ', ' + str(dec) + ') to catalogue')
         
         print(">> Removing positions from overlapping regions...")
-        catalogue = self.remove_overlap_positions(ra_coords, dec_coords, overlap_store, larger_catalogue)
+        dark_catalogue = self.remove_overlap_positions(ra_coords, dec_coords, overlap_store, dark__catalogue)
         
-        if allsky:
+        if return_overlaps:
             print(f">> Finding largest overlap for whole {query_dist}-degree square...")
             overlap_store = np.asarray(overlap_store)
             if overlap_store.shape[0] > 1:
@@ -580,10 +624,10 @@ class SkyCatalogue():
                 max_dec = overlap_store[3]
             # print(f">> min RA/DEC = ({min_ra}, {min_dec})    max RA/DEC = ({max_ra}, {max_dec})")
             print(f"> Done!")
-            return catalogue, [min_ra, min_dec, max_ra, max_dec]
+            return dark_catalogue, [min_ra, min_dec, max_ra, max_dec]
         
         print(f"> Done!")
-        return catalogue
+        return dark_catalogue
     
     # @timer
     def all_sky(self, bands=('g','r','i','z'), query_dist=5.0, min_ra=0, min_dec=-90, max_ra=360, max_dec=30, **kwargs):
