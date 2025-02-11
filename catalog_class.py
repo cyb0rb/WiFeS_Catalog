@@ -12,8 +12,7 @@ import pandas as pd
 from sklearn.neighbors import KDTree
 
 class SkyCatalogue():
-    
-    # @timer
+
     def __init__(self, mode="corner", bands=('g','r','i','z'), map_dist=1.0, mask_radius=20, fov=45, verbose=False):
         """ Initialise the SkyCatalogue object.
 
@@ -495,7 +494,7 @@ class SkyCatalogue():
             coords=[ra-self.map_dist/2, ra+self.map_dist/2, dec-self.map_dist/2, dec+self.map_dist/2]
             
         if add_query:
-            print(f">> Querying the tractor catalog for stars from RA/DEC({coords[0]}, {coords[2]}) to ({coords[1]}, {coords[3]})...")
+            verboseprint(f">> Querying the tractor catalog for stars from RA/DEC({coords[0]}, {coords[2]}) to ({coords[1]}, {coords[3]})...")
             catalog_df = self.query_tractor(ra, dec, dist=self.map_dist)
         # print(">>>> Generating dark sky positions of 1-degree square...")
         verboseprint(">>>> Combining mask and queried stars...")
@@ -634,13 +633,13 @@ class SkyCatalogue():
         
         verboseprint(">> Looping through sky coordinates...")
         for ra_c, dec_c in zip(ra_coords,dec_coords):
-            print(f">>> Generating sky catalog for square RA,DEC ({ra_c}, {dec_c}) to ({ra_c+self.map_dist}, {dec_c+self.map_dist})...")
+            verboseprint(f">>> Generating sky catalog for square RA,DEC ({ra_c}, {dec_c}) to ({ra_c+self.map_dist}, {dec_c+self.map_dist})...")
             if self.galactic_check(ra_c, dec_c, self.map_dist):
                 cat, overlap = self.create_degree_square(ra_c, dec_c, query_df, plot_image)
                 dark__catalogue = pd.concat([dark__catalogue.astype(cat.dtypes),cat],axis=0).reset_index(drop=True)
                 overlap_store.append(overlap)
             else:
-                print(f">>> {self.map_dist}-degree square intersects with the galactic plane!")
+                verboseprint(f">>> {self.map_dist}-degree square intersects with the galactic plane!")
                 overlap_store.append([ra, dec, ra+self.map_dist, dec+self.map_dist])
             # print('Added (' + str(ra) + ', ' + str(dec) + ') to catalogue')
         
@@ -660,11 +659,10 @@ class SkyCatalogue():
                 min_dec = overlap_store[1]
                 max_ra = overlap_store[2]
                 max_dec = overlap_store[3]
-            # print(f">> min RA/DEC = ({min_ra}, {min_dec})    max RA/DEC = ({max_ra}, {max_dec})")
             verboseprint(f"> Done!")
             return dark_catalogue, [min_ra, min_dec, max_ra, max_dec]
         
-        print(f"> Done!")
+        verboseprint(f"> Done!")
         return dark_catalogue
     
     def all_sky(self, ra_allsky=0, dec_allsky=-90, sky_dist=10.0, query_dist=2.0, full_sky=False, **kwargs):
