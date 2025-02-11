@@ -8,7 +8,7 @@ import numpy as np
 
 from dl import queryClient as qc
 import pandas as pd
-from scipy.spatial import distance_matrix
+from sklearn.neighbors import KDTree
 
 # timer function
 import functools
@@ -18,6 +18,7 @@ import time
 import cProfile
 import pstats
 from pstats import SortKey
+from line_profiler import profile
 
 def timer(func):
     @functools.wraps(func)
@@ -34,7 +35,7 @@ def timer(func):
 class SkyCatalogue():
     
     # @timer
-    def __init__(self, bands, map_dist=1.0, mask_radius=20, fov=45):
+    def __init__(self, bands=('g','r','i','z'), map_dist=1.0, mask_radius=20, fov=45):
         
         self.bands = bands
         self.map_dist = map_dist
@@ -49,6 +50,14 @@ class SkyCatalogue():
         # define grid stuff
         print("Defining grid lines...")
         self.define_grid()
+        
+        # create distance grid for this dimension
+        print("Creating KDTree for distance calculations...")
+        self.dist_array = np.indices((self.dim, self.dim), dtype=int)
+        self.dist_array = np.dstack((self.dist_array[0], self.dist_array[1]))
+        self.dist_array = np.concatenate(self.dist_array, axis=0)
+        self.distance_tree = KDTree(self.dist_array)
+        print("KDTree created!")
         
         pass
 
@@ -254,58 +263,30 @@ class SkyCatalogue():
         all_stars['min_ra'] = all_stars['ra'] - all_stars['radius']
         all_stars['max_dec'] = all_stars['dec'] + all_stars['radius']
         all_stars['min_dec'] = all_stars['dec'] - all_stars['radius']
-        
-        # boolean for radii that go above 1-degree integer RA/DEC bounds
-        expression = '(max_ra > ceil(ra)) | (min_ra < floor(ra)) | (max_dec > ceil(dec)) | (min_dec < floor(dec))'
-        all_stars['overlap'] = all_stars.eval(expression)
-        
+
         # ra, dec, and radius in pixels
         # TODO check if off by one is needed?
         all_stars['ra_pix'] = np.round((all_stars['ra'] - coords[0]) * self.dim).astype(int) - 1
         all_stars['dec_pix'] = np.round((all_stars['dec'] - coords[2]) * self.dim).astype(int) - 1
         all_stars['rad_pix'] = np.ceil(all_stars['radius'] * self.dim).astype(int)
-        
-        all_stars['min_ra_pix'] = all_stars['ra_pix'] - all_stars['rad_pix']
-        all_stars['max_ra_pix'] = all_stars['ra_pix'] + all_stars['rad_pix']
-        all_stars['min_dec_pix'] = all_stars['dec_pix'] - all_stars['rad_pix']
-        all_stars['max_dec_pix'] = all_stars['dec_pix'] + all_stars['rad_pix']
-        
-        # set stars outside of map range to that value
-        all_stars.loc[all_stars['min_ra_pix'] < 0, 'min_ra_pix'] = 0
-        all_stars.loc[all_stars['max_ra_pix'] > self.dim, 'max_ra_pix'] = self.dim
-        all_stars.loc[all_stars['min_dec_pix'] < 0, 'min_dec_pix'] = 0
-        all_stars.loc[all_stars['max_dec_pix'] > self.dim, 'max_dec_pix'] = self.dim
-        
+
         return all_stars
     
     # @timer
+    @profile
     def seg_map(self, star_data:pd.DataFrame):
         """Creates segementation map of shape (`dim`, `dim`) based on the mask locations and pixel data of `star_data`"""
 
-        array = np.zeros((self.dim, self.dim), dtype=int)
-        array.flatten()
-        
-        for star in star_data.to_dict('records'):
-            
-            # center pixel to determine distance from
-            center = [[star['dec_pix'], star['ra_pix']]]
-            
-            # make array of indexes
-            # TODO add check of dimension sign to make sure it's not negative
-            chunk = np.indices((star['max_dec_pix'] - star['min_dec_pix'], star['max_ra_pix'] - star['min_ra_pix']))
-            
-            # adjust indices to correspond to the larger grid
-            # coord grid is shaped like [ [x1, y1], [x1, y2], ... [x1, yn], [x2, y1], ... [xn, yn] ]
-            coord_grid = np.dstack((chunk[0]+star['min_dec_pix'], chunk[1]+star['min_ra_pix']))
-            coord_grid = np.concatenate(coord_grid, axis=0)
-            
-            # calculate distances of each pixel coordinate to the center pixel
-            distances = distance_matrix(x=coord_grid, y=center)
+        # array = np.zeros((self.dim, self.dim), dtype=int)
+        array = np.zeros(self.dim**2, dtype=int)
+        radec = np.asarray([star_data['dec_pix'],star_data['ra_pix']]).T
+        circle_points = self.distance_tree.query_radius(radec, star_data['rad_pix'])
+        # print("Putting points on array...")
+        for circle_array in circle_points:
+            np.put(array, circle_array, 1)
+        print("Done!")        
+        array = array.reshape((self.dim, self.dim))
 
-            # change all values of the segmap array to 0 where distances are < mask radius
-            np.place(array[star['min_dec_pix']:star['max_dec_pix'], star['min_ra_pix']:star['max_ra_pix']], distances < star['rad_pix'], 1)
-
-        array.reshape((self.dim, self.dim))
         return array
     
     # @timer
@@ -530,11 +511,15 @@ class SkyCatalogue():
         return catalogue
     
     # @timer
-    def all_sky(self, query_dist=5.0, min_ra=0, min_dec=-90, max_ra=360, max_dec=30):
+    def all_sky(self, bands=('g','r','i','z'), query_dist=5.0, min_ra=0, min_dec=-90, max_ra=360, max_dec=30, **kwargs):
         """Loop through the entire sky."""
+        
+        if 'bands' in kwargs.keys():
+            self.bands = kwargs['bands']
         
         print("================= WHOLE SKY =================")
         print(f"===== From {min_ra},{min_dec} to {max_ra},{max_dec} in {query_dist}^2 squares ======")
+        print(f"===== Bands used: {self.bands} =====")
         # use 5 degree squares
         
         dec_range = np.arange(min_dec, max_dec, query_dist)
@@ -568,11 +553,13 @@ class SkyCatalogue():
 if __name__=="__main__":
     
     # catalog = SkyCatalogue()
-    catalog_g_band = SkyCatalogue(bands=('g'))
-    cProfile.run('catalog_g_band.create_catalogue(3, -4, 2)', 'gstats')
+    catalog_g_band = SkyCatalogue(all_bands=False)
+    # cProfile.run('catalog_g_band.create_catalogue(3, -4, 2)', 'gstats')
+    catalog_g_band.all_sky(query_dist=2.0, min_ra=212, max_ra=216, min_dec=16, max_dec=20)
+    # cProfile.run('catalog_g_band.all_sky(query_dist=2.0, min_ra=212, max_ra=216, min_dec=16, max_dec=20)', 'gstats')
     
-    gstats = pstats.Stats('gstats')
-    gstats.sort_stats(SortKey.TIME).print_stats('catalog_class')
+    # gstats = pstats.Stats('gstats')
+    # gstats.sort_stats(SortKey.TIME).print_stats(20)
     # gstats.print_stats()
     # gstats.strip_dirs().sort_stats(-1).print_stats()
     # positions_gband = catalog_g_band.create_catalogue(3, -4, 2)
