@@ -503,7 +503,7 @@ class SkyCatalogue():
         return catalogue
         
     # @timer
-    def create_catalogue(self, ra, dec, plot_image=False, allsky=False):
+    def create_catalogue(self, ra, dec, query_dist, plot_image=False, allsky=False):
         """Creates catalog of sky positions in a square starting from a bottom-left corner of (ra, dec)
         up to (ra+query_dist, dec+query_dist) using a single query to the LSDR10 tractor catalog.
         
@@ -526,26 +526,23 @@ class SkyCatalogue():
         catalogue: `DataFrame`
             DataFrame of dark sky positions containing columns: `ra`, `dec`
         """
-        
-        
-        print(f"> Creating sky catalog from one {self.map_dist}-degree square starting from ({ra}, {dec}) to ({ra+self.map_dist}, {dec+self.map_dist})")
-        # query sky for some amount
-        print(f">> Querying the tractor catalog for stars from RA/DEC({ra}, {dec}) to ({ra+self.map_dist}, {dec+self.map_dist})...")
-        query_df = self.query_tractor(ra, dec, self.map_dist)
         if self.mode=="corner":
-            ra_min=ra
-            ra_max = ra + self.map_dist
-            dec_min=dec
-            dec_max = dec + self.dist
+            print(f"> Creating sky catalog from one {query_dist}-degree square starting from ({ra}, {dec}) to ({ra+query_dist}, {dec+query_dist})")
+            # query sky for some amount
+            print(f">> Querying the tractor catalog for stars from RA/DEC({ra}, {dec}) to ({ra+query_dist}, {dec+query_dist})...")
+            query_df = self.query_tractor(ra, dec, query_dist)
+            # make array of ra / dec starting points for degree cubes
+            dec_range = np.arange(dec, dec+query_dist)
+            ra_range = np.arange(ra, ra+query_dist)
 
         if self.mode=="centre":
-            ra_min=ra-self.map_dist/2
-            ra_max = ra + self.map_dist/2
-            dec_min=dec-self.map_dist/2
-            dec_max = dec + self.map_dist/2
-        # make array of ra / dec starting points for degree cubes
-        dec_range = np.arange(dec, dec+query_dist)
-        ra_range = np.arange(ra, ra+query_dist)
+            print(f"> Creating sky catalog from one {query_dist}-degree square starting from ({ra-query_dist/2}, {dec-query_dist/2}) to ({ra+query_dist/2}, {dec+query_dist/2})")
+            # query sky for some amount
+            print(f">> Querying the tractor catalog for stars from RA/DEC({ra-query_dist/2}, {dec-query_dist/2}) to ({ra+query_dist/2}, {dec+query_dist/2})...")
+            query_df = self.query_tractor(ra, dec, query_dist)
+            # make array of ra / dec starting points for degree cubes
+            dec_range = np.arange(dec-query_dist/2, dec+query_dist/2)
+            ra_range = np.arange(ra-query_dist/2, ra+query_dist/2)
         
         coord_grid = np.meshgrid(ra_range, dec_range)
         ra_coords = coord_grid[0].flatten()
@@ -561,7 +558,7 @@ class SkyCatalogue():
                 larger_catalogue = pd.concat([larger_catalogue.astype(cat.dtypes),cat],axis=0).reset_index(drop=True)
                 overlap_store.append(overlap)
             else:
-                print(f">>> 1-degree square with corner {ra}, {dec} intersects with the galactic plane!")
+                print(f">>> 1-degree square intersects with the galactic plane!")
                 overlap_store.append([ra, dec, ra+1, dec+1])
             # print('Added (' + str(ra) + ', ' + str(dec) + ') to catalogue')
         
