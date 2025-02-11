@@ -14,7 +14,7 @@ from sklearn.neighbors import KDTree
 class SkyCatalogue():
     
     # @timer
-    def __init__(self, mode="corner", bands=('g','r','i','z'), map_dist=1.0, mask_radius=20, fov=45):
+    def __init__(self, mode="corner", bands=('g','r','i','z'), map_dist=1.0, mask_radius=20, fov=45, verbose=False):
         """ Initialise the SkyCatalogue object.
 
         Parameters
@@ -32,7 +32,10 @@ class SkyCatalogue():
         fov : `float` (default=45)
             Maximum telescope field of view, corresponding to side length of safe zone around identified dark sky positions (arcseconds)
         """
-        
+
+        print("Initialising...")
+        verboseprint = print if verbose else lambda *a, **k: None
+
         self.bands = bands
         self.map_dist = map_dist
         self.dim = int((3600*4) * self.map_dist)
@@ -41,21 +44,22 @@ class SkyCatalogue():
         self.mode = mode
         
         # load all masked stars
-        print("Loading masked star data....")
+        verboseprint("Loading masked star data....")
         self.load_mask_data()
         
         # define grid lines from fov
-        print("Defining grid lines...")
+        verboseprint("Defining grid lines...")
         self.define_grid()
         
         # create distance grid for this dimension
-        print("Creating KDTree for distance calculations...")
+        verboseprint("Creating KDTree for distance calculations...")
         self.dist_array = np.indices((self.dim, self.dim), dtype=int)
         self.dist_array = np.dstack((self.dist_array[0], self.dist_array[1]))
         self.dist_array = np.concatenate(self.dist_array, axis=0)
         self.distance_tree = KDTree(self.dist_array)
-        print("KDTree created!")
+        verboseprint("KDTree created!")
         
+        print("Initialisation complete!")
         pass
 
     def galactic_check(self, ra, dec, dist):
@@ -481,6 +485,7 @@ class SkyCatalogue():
             Minimum and maximum right ascension and declinations of the maximum overlap of one 1 x 1 degree region into another
             In order; min_ra, min_dec, max_ra, max_dec
         """
+            
         if 'bands' in kwargs.keys():
             self.bands = kwargs['bands']
         
@@ -490,32 +495,32 @@ class SkyCatalogue():
             coords=[ra-self.map_dist/2, ra+self.map_dist/2, dec-self.map_dist/2, dec+self.map_dist/2]
             
         if add_query:
-            print(f">> Querying the tractor catalog for stars from RA/DEC({coords[0]}, {coords[2]}) to ({coords[1]}, {coords[3]})...")
+            verboseprint(f">> Querying the tractor catalog for stars from RA/DEC({coords[0]}, {coords[2]}) to ({coords[1]}, {coords[3]})...")
             catalog_df = self.query_tractor(ra, dec, dist=1)
         # print(">>>> Generating dark sky positions of 1-degree square...")
-        print(">>>> Combining mask and queried stars...")
+        verboseprint(">>>> Combining mask and queried stars...")
         all_stars = self.combine_data(catalog_df, coords)
-        print(">>>> Calculating pixel values for stars....")
+        verboseprint(">>>> Calculating pixel values for stars....")
         all_stars = self.create_pixel_columns(all_stars, coords)
 
-        print(">>>> Creating segmentation map...")
+        verboseprint(">>>> Creating segmentation map...")
         segmentation_map = self.seg_map(all_stars)
         
-        print(">>>> Finding dark regions in segmentation map...")
+        verboseprint(">>>> Finding dark regions in segmentation map...")
         dr_trans, dark_regions = self.find_dark_regions(segmentation_map)
 
         if plot_image:
-            print(">>>> Plotting dark regions...")
+            verboseprint(">>>> Plotting dark regions...")
             pix_coords = [all_stars['ra_pix'], all_stars['dec_pix'], all_stars['rad_pix']]
             self.create_plot(segmentation_map, coords, pix_coords, dr_trans)
 
-        print(">>>> Converting dark regions to coordinates...")
+        verboseprint(">>>> Converting dark regions to coordinates...")
         dark_catalogue = self.create_data_frame(dark_regions, coords)
         
-        print(">>>> Finding maximum extent of stars beyond the degree-square bounds...")
+        verboseprint(">>>> Finding maximum extent of stars beyond the degree-square bounds...")
         overlap = self.find_overlapping_extent(all_stars)
         
-        print(">>>> Done!")
+        verboseprint(">>>> Done!")
         return dark_catalogue, overlap
 
     def remove_overlap_positions(self, ra_coords, dec_coords, overlap_store, dark_catalogue, bounds=1):
@@ -600,7 +605,7 @@ class SkyCatalogue():
         if self.mode=="corner":
             print(f"> Creating sky catalog from one {query_dist}-degree square starting from ({ra}, {dec}) to ({ra+query_dist}, {dec+query_dist})")
             # query sky for some amount
-            print(f">> Querying the tractor catalog for stars from RA/DEC({ra}, {dec}) to ({ra+query_dist}, {dec+query_dist})...")
+            verboseprint(f">> Querying the tractor catalog for stars from RA/DEC({ra}, {dec}) to ({ra+query_dist}, {dec+query_dist})...")
             query_df = self.query_tractor(ra, dec, query_dist)
             # make array of ra / dec starting points for degree cubes
             dec_range = np.arange(dec, dec+query_dist)
@@ -609,7 +614,7 @@ class SkyCatalogue():
         if self.mode=="centre":
             print(f"> Creating sky catalog from one {query_dist}-degree square starting from ({ra-query_dist/2}, {dec-query_dist/2}) to ({ra+query_dist/2}, {dec+query_dist/2})")
             # query sky for some amount
-            print(f">> Querying the tractor catalog for stars from RA/DEC({ra-query_dist/2}, {dec-query_dist/2}) to ({ra+query_dist/2}, {dec+query_dist/2})...")
+            verboseprint(f">> Querying the tractor catalog for stars from RA/DEC({ra-query_dist/2}, {dec-query_dist/2}) to ({ra+query_dist/2}, {dec+query_dist/2})...")
             query_df = self.query_tractor(ra, dec, query_dist)
             # make array of ra / dec starting points for degree cubes
             dec_range = np.arange(dec-query_dist/2, dec+query_dist/2)
@@ -621,23 +626,22 @@ class SkyCatalogue():
         overlap_store = []
         dark__catalogue = pd.DataFrame(columns=['ra','dec'])
         
-        print(">> Looping through sky coordinates...")
+        verboseprint(">> Looping through sky coordinates...")
         for ra_c, dec_c in zip(ra_coords,dec_coords):
-            print(f">>> Generating sky catalog for square RA,DEC ({ra_c}, {dec_c}) to ({ra_c+1}, {dec_c+1})...")
+            verboseprint(f">>> Generating sky catalog for square RA,DEC ({ra_c}, {dec_c}) to ({ra_c+1}, {dec_c+1})...")
             if self.galactic_check(ra_c, dec_c, 1):
                 cat, overlap = self.create_degree_square(ra_c, dec_c, query_df, plot_image)
                 dark__catalogue = pd.concat([dark__catalogue.astype(cat.dtypes),cat],axis=0).reset_index(drop=True)
                 overlap_store.append(overlap)
             else:
-                print(f">>> 1-degree square intersects with the galactic plane!")
+                verboseprint(f">>> 1-degree square intersects with the galactic plane!")
                 overlap_store.append([ra, dec, ra+1, dec+1])
-            # print('Added (' + str(ra) + ', ' + str(dec) + ') to catalogue')
         
-        print(">> Removing positions from overlapping regions...")
+        verboseprint(">> Removing positions from overlapping regions...")
         dark_catalogue = self.remove_overlap_positions(ra_coords, dec_coords, overlap_store, dark__catalogue)
         
         if return_overlaps:
-            print(f">> Finding largest overlap for whole {query_dist}-degree square...")
+            verboseprint(f">> Finding largest overlap for whole {query_dist}-degree square...")
             overlap_store = np.asarray(overlap_store)
             if overlap_store.shape[0] > 1:
                 min_ra = np.min(overlap_store[:, 0])
@@ -650,13 +654,12 @@ class SkyCatalogue():
                 max_ra = overlap_store[2]
                 max_dec = overlap_store[3]
             # print(f">> min RA/DEC = ({min_ra}, {min_dec})    max RA/DEC = ({max_ra}, {max_dec})")
-            print(f"> Done!")
+            verboseprint(f"> Done!")
             return dark_catalogue, [min_ra, min_dec, max_ra, max_dec]
         
         print(f"> Done!")
         return dark_catalogue
     
-    # @timer
     def all_sky(self, ra_allsky=0, dec_allsky=-90, sky_dist=10.0, query_dist=2.0, full_sky=False, **kwargs):
         """Loop through the entire sky.
         
@@ -735,17 +738,6 @@ class SkyCatalogue():
         
         
 if __name__=="__main__": 
-    
-    # catalog = SkyCatalogue()
+
     catalog_g_band = SkyCatalogue(all_bands=False)
-    # cProfile.run('catalog_g_band.create_catalogue(3, -4, 2)', 'gstats')
     catalog_g_band.all_sky(query_dist=2.0, min_ra=212, max_ra=216, min_dec=16, max_dec=20)
-    # cProfile.run('catalog_g_band.all_sky(query_dist=2.0, min_ra=212, max_ra=216, min_dec=16, max_dec=20)', 'gstats')
-    
-    # gstats = pstats.Stats('gstats')
-    # gstats.sort_stats(SortKey.TIME).print_stats(20)
-    # gstats.print_stats()
-    # gstats.strip_dirs().sort_stats(-1).print_stats()
-    # positions_gband = catalog_g_band.create_catalogue(3, -4, 2)
-    # positions = catalog.all_sky(query_dist=30.0)
-    # positions = catalog.create_catalogue()
