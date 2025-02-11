@@ -35,7 +35,7 @@ def timer(func):
 class SkyCatalogue():
     
     # @timer
-    def __init__(self, bands, map_dist=1.0, mask_radius=20, fov=45):
+    def __init__(self, bands=('g','r','i','z'), map_dist=1.0, mask_radius=20, fov=45):
         
         self.bands = bands
         self.map_dist = map_dist
@@ -263,29 +263,13 @@ class SkyCatalogue():
         all_stars['min_ra'] = all_stars['ra'] - all_stars['radius']
         all_stars['max_dec'] = all_stars['dec'] + all_stars['radius']
         all_stars['min_dec'] = all_stars['dec'] - all_stars['radius']
-        
-        # boolean for radii that go above 1-degree integer RA/DEC bounds
-        # expression = '(max_ra > ceil(ra)) | (min_ra < floor(ra)) | (max_dec > ceil(dec)) | (min_dec < floor(dec))'
-        # all_stars['overlap'] = all_stars.eval(expression)
-        
+
         # ra, dec, and radius in pixels
         # TODO check if off by one is needed?
         all_stars['ra_pix'] = np.round((all_stars['ra'] - coords[0]) * self.dim).astype(int) - 1
         all_stars['dec_pix'] = np.round((all_stars['dec'] - coords[2]) * self.dim).astype(int) - 1
         all_stars['rad_pix'] = np.ceil(all_stars['radius'] * self.dim).astype(int)
-        
-        all_stars['min_ra_pix'] = all_stars['ra_pix'] - all_stars['rad_pix']
-        all_stars['max_ra_pix'] = all_stars['ra_pix'] + all_stars['rad_pix']
-        all_stars['min_dec_pix'] = all_stars['dec_pix'] - all_stars['rad_pix']
-        all_stars['max_dec_pix'] = all_stars['dec_pix'] + all_stars['rad_pix']
-        
-        # set stars outside of map range to that value
-        all_stars.loc[all_stars['min_ra_pix'] < 0, 'min_ra_pix'] = 0
-        all_stars.loc[all_stars['max_ra_pix'] > self.dim, 'max_ra_pix'] = self.dim
-        all_stars.loc[all_stars['min_dec_pix'] < 0, 'min_dec_pix'] = 0
-        all_stars.loc[all_stars['max_dec_pix'] > self.dim, 'max_dec_pix'] = self.dim
-        
-        # print(all_stars.dtypes)
+
         return all_stars
     
     # @timer
@@ -302,26 +286,6 @@ class SkyCatalogue():
             np.put(array, circle_array, 1)
         print("Done!")        
         array = array.reshape((self.dim, self.dim))
-        
-        # for star in star_data.to_dict('records'):
-            
-        #     # center pixel to determine distance from
-        #     center = [[star['dec_pix'], star['ra_pix']]]
-            
-        #     # make array of indexes
-        #     # TODO add check of dimension sign to make sure it's not negative
-        #     chunk = np.indices((star['max_dec_pix'] - star['min_dec_pix'], star['max_ra_pix'] - star['min_ra_pix']))
-            
-        #     # adjust indices to correspond to the larger grid
-        #     # coord grid is shaped like [ [x1, y1], [x1, y2], ... [x1, yn], [x2, y1], ... [xn, yn] ]
-        #     coord_grid = np.dstack((chunk[0]+star['min_dec_pix'], chunk[1]+star['min_ra_pix']))
-        #     coord_grid = np.concatenate(coord_grid, axis=0)
-            
-        #     # calculate distances of each pixel coordinate to the center pixel
-        #     distances = distance_matrix(x=coord_grid, y=center)
-
-        #     # change all values of the segmap array to 0 where distances are < mask radius
-        #     np.place(array[star['min_dec_pix']:star['max_dec_pix'], star['min_ra_pix']:star['max_ra_pix']], distances < star['rad_pix'], 1)
 
         return array
     
@@ -547,11 +511,15 @@ class SkyCatalogue():
         return catalogue
     
     # @timer
-    def all_sky(self, query_dist=5.0, min_ra=0, min_dec=-90, max_ra=360, max_dec=30):
+    def all_sky(self, bands=('g','r','i','z'), query_dist=5.0, min_ra=0, min_dec=-90, max_ra=360, max_dec=30, **kwargs):
         """Loop through the entire sky."""
+        
+        if 'bands' in kwargs.keys():
+            self.bands = kwargs['bands']
         
         print("================= WHOLE SKY =================")
         print(f"===== From {min_ra},{min_dec} to {max_ra},{max_dec} in {query_dist}^2 squares ======")
+        print(f"===== Bands used: {self.bands} =====")
         # use 5 degree squares
         
         dec_range = np.arange(min_dec, max_dec, query_dist)
