@@ -1,3 +1,4 @@
+# imports
 import matplotlib.pyplot as plt
 from astropy.io import fits as fits
 from astropy.coordinates import SkyCoord
@@ -9,28 +10,6 @@ import numpy as np
 from dl import queryClient as qc
 import pandas as pd
 from sklearn.neighbors import KDTree
-
-# timer function
-import functools
-import time
-
-# profiling
-import cProfile
-import pstats
-from pstats import SortKey
-from line_profiler import profile
-
-def timer(func):
-    @functools.wraps(func)
-    def wrapper_timer(*args, **kwargs):
-        tic = time.perf_counter()
-        value = func(*args, **kwargs)
-        toc = time.perf_counter()
-        elapsed_time = toc - tic
-        print(f"Elapsed time: {elapsed_time:0.4f} seconds")
-        return value
-    return wrapper_timer
-
 
 class SkyCatalogue():
     
@@ -62,11 +41,23 @@ class SkyCatalogue():
         
         pass
 
-    def galactic_check(self, ra,dec,dist):
-        """Check if any of a square with side length `dist` and a bottom left corner (ra,dec) has
+    def galactic_check(self, ra, dec, dist):
+        """Check if any of a square with side length `dist` and a centre coordinate (ra,dec) has
         any intersection with the galactic plane (|b| <= 19) or the LMC/SMC
-        
-        Returns False if square falls within forbidden region, True otherwise
+
+        Parameters
+        ----------
+        ra : `float`
+            Right ascension of the centre of the square (degrees)
+        dec : `float`
+            Declination of the centre of the square (degrees)
+        dist : `float'
+            Side length of square region to query (degrees)
+
+        Returns
+        -------
+        `bool`
+            True if region is safe, False otherwise
         """
         if self.mode=="corner":
             ra_min=ra
@@ -105,26 +96,25 @@ class SkyCatalogue():
         return True
 
     
-    @timer
-    def query_tractor(self, ra, dec, dist=1.0):
+    def query_tractor(self, ra, dec, dist, bands):
         """Queries the Astro Data Lab for the ra, dec and mag of the objects within a square of side length (dist).     
-        The queried square will range from (ra, dec) to (ra+dist, dec+dist)
+        The queried square will range from (ra, dec) to (ra+dist/2, dec+dist/2)
         
         Parameters
         ----------
         ra: `float`
-            Right ascension of bottom left corner of square (degrees)
+            Right ascension of the centre of the square (degrees)
         dec: `float`
             Declination of bottom left corner of square (degrees)
         dist: `float`
-            Side length of square to query (degrees)
-        all_bands: `bool`
-            Whether to query all g/r/i/z bands from LSDR10 (True) or just g-band (False)
-            If all bands are queried, magnitudes are used preferentially from g > r > i > z
+            Side length of square region to query (degrees)
+        bands: `tuple` `str`
+            Bands to query for objects from the selection of ('g', 'r', 'i', 'z')
+            Where objects are detected in multiple bands, the one with the brightest magnitude will be selected
         
         Returns
         -------
-        brick_info: `DataFrame`
+        brick_info: `pd.DataFrame`
             Pandas DataFrame containing columns: `ra`, `dec`, `mag`, `passband`
         """
         # Bounds of the square we are querying objects for based on the mode
@@ -141,7 +131,7 @@ class SkyCatalogue():
             dec_max = dec + dist/2
       
 
-        if self.bands == ('g','r','i','z'):
+        if bands == ('g','r','i','z'):
             query = f"""
             SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
             FROM ls_dr10.tractor_s
@@ -152,7 +142,7 @@ class SkyCatalogue():
                 OR mag_i<=21 AND mag_i>=16
                 OR mag_z<=21 AND mag_z>=16)       
             """
-        elif self.bands == ('g', 'r', 'i'):
+        elif bands == ('g', 'r', 'i'):
             query = f"""
             SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
             FROM ls_dr10.tractor_s
@@ -162,7 +152,7 @@ class SkyCatalogue():
                 OR mag_r<=21 AND mag_r>=16
                 OR mag_i<=21 AND mag_i>=16)      
             """
-        elif self.bands == ('g','r'):
+        elif bands == ('g','r'):
             query = f"""
             SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
             FROM ls_dr10.tractor_s
@@ -171,7 +161,7 @@ class SkyCatalogue():
             AND (mag_g<=21 AND mag_g>=16
                 OR mag_r<=21 AND mag_r>=16)     
             """
-        elif self.bands ==('g'):
+        elif bands ==('g'):
             query = f"""
             SELECT ra, dec, mag_g,mag_r,mag_i,mag_z
             FROM ls_dr10.tractor_s
@@ -209,13 +199,14 @@ class SkyCatalogue():
 
         return brick_info
     
-    # @timer
     def load_mask_data(self):
-        """Load all of the mask data files. 
-        Returns a pandas Dataframe with columns 'ra', 'dec', 'radius'
+        """Load all files containing mask data.
+        Circular masks are set for detected PSF object (stars), galaxies, and globular clusters/planetary nebulae.
         """
 
         all_masks = []
+
+        # load PSF (stars) masks
         for i in range(5):
             with np.load(f"mask_data_files/mask_data_{i}.npz", mmap_mode='r') as mask_data:
                 mask_array = mask_data['arr_0']
@@ -223,12 +214,14 @@ class SkyCatalogue():
                 masked_stars = pd.DataFrame(mask_array_byteswap)
                 all_masks.append(masked_stars)
 
+        # load globular clusters and planetary nebulae masks
         with np.load(f"mask_data_files/mask_data_clusters.npz", mmap_mode='r') as mask_data:
             mask_array = mask_data['arr_0']
             mask_array_byteswap = mask_array.byteswap().newbyteorder()
             masked_stars = pd.DataFrame(mask_array_byteswap)
             all_masks.append(masked_stars)
         
+        # load galaxy masks
         with np.load(f"mask_data_files/mask_data_galaxies.npz", mmap_mode='r') as mask_data:
             mask_array = mask_data['arr_0']
             mask_array_byteswap = mask_array.byteswap().newbyteorder()
@@ -236,20 +229,42 @@ class SkyCatalogue():
             all_masks.append(masked_stars)
             
         self.mask_df = pd.concat(all_masks, ignore_index=True)
+
     
-    # @timer
     def calculate_mask_radius(self, mag):
         """Calculate masking radius (in degrees) for an object given some magnitude `mag` with
         a minimum size based on initialized mask radius (default=20 arcsec).
         
         This function is modified from the [legacypipe `mask_radius_for_mag()` function](https://github.com/legacysurvey/legacypipe/blob/DR10.0.12/py/legacypipe/reference.py#L352-L357)
+
+        Parameters
+        ----------
+        mag : `float`
+            Magnitude (in g, r, i or z band) of object
+
+        Returns
+        -------
+        `float`
+            Radius of mask associated with object (degrees)
         """
         return (self.mask_radius/3600) + 1630./3600. * 1.396**(-mag)
     
-    # @timer
     def combine_data(self, catalog_stars:pd.DataFrame, coords):
-        """Combines the data from masked and catalog stars within some coordinate range"""
-        # coords = [ra, ra+map_dist, dec, dec+map_dist]
+        """Combines the downloaded mask data from load_mask_data with calculated masks from
+        calculate_mask_radius over the specified coordinates into a single dataframe.
+
+        Parameters
+        ----------
+        catalog_stars : `pd.DataFrame`
+            Stars queried directly from the tractor catalogue with columns ra, dec, radius
+        coords : `list`
+            Minimum and maximum right ascensions and declinations of regions queried from the tractor catalogue
+
+        Returns
+        -------
+        all_stars : `pd.DataFrame'
+            Combined dataframe of all stars with associated mask data with columns ra, dec, radius
+        """
         
         # cut masked stars to only use the same area as catalog_stars
         masked_box = self.mask_df.query('(@coords[0] < ra < @coords[1]) and (@coords[2] < dec < @coords[3])')
@@ -268,10 +283,20 @@ class SkyCatalogue():
         all_stars = pd.concat([masked_box, catalog_box]).reset_index(drop=True)
         return all_stars
     
-    # @timer
     def create_pixel_columns(self, all_stars:pd.DataFrame, coords):
-        """Creates columns for min and max ra and dec for all stars in the dataframe"""
-        # coords: [ra, ra+map_dist, dec, dec+map_dist]
+        """Converts coorindate data into a pixel grid and calculates pixel values of all objects.
+
+        Parameters
+        ----------
+        all_stars : `pd.DataFrame`
+            Combined dataframe of all stars with associated mask data with columns ra, dec, radius
+
+        Returns
+        -------
+        all_stars : `pd.DataFrame`
+            Updated dataframe with coordinate conversions to pixels and minimum and maximum coordinate values in pixels
+            Contains columns ra, dec, radius, max_ra, min_ra, max_dec, min_dec, ra_pix, dec_pix, rad_pix
+        """
         
         # find max and min ra/dec corresponding to the mask of star
         all_stars['max_ra'] = all_stars['ra'] + all_stars['radius']
@@ -287,25 +312,20 @@ class SkyCatalogue():
 
         return all_stars
     
-    @timer
-    @profile
     def seg_map(self, star_data:pd.DataFrame):
         """Creates segementation map of shape (`dim`, `dim`) based on the mask locations and pixel data of `star_data`"""
 
-        # array = np.zeros((self.dim, self.dim), dtype=int)
         array = np.zeros(self.dim**2, dtype=int)
         radec = np.asarray([star_data['dec_pix'],star_data['ra_pix']]).T
         circle_points = self.distance_tree.query_radius(radec, star_data['rad_pix'])
-        # circle_points = np.unique(np.concatenate(circle_points))
-        # print("Putting points on array...")
+
         for circle_array in circle_points:
             np.put(array, circle_array, 1)
-        # print("Done!")        
+        
         array = array.reshape((self.dim, self.dim))
 
         return array
     
-    # @timer
     def define_grid(self):
         """Creates gridlines and centers on pixels for the initialized dimension and field of view"""
         self.gridlines = np.arange(0, self.dim+1, (self.fov/3600 * self.dim))
@@ -422,8 +442,7 @@ class SkyCatalogue():
         
         print(">>>> Done!")
         return dark_catalogue, overlap
-    
-    # @timer
+
     def remove_overlap_positions(self, ra_coords, dec_coords, overlap_store, larger_catalogue, bounds=1):
         # overlap_store = [ [minra, mindec, maxra, maxdec] ]
         catalogue = larger_catalogue.copy()
