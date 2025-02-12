@@ -64,7 +64,7 @@ class SkyCatalogue():
         print("Initialisation complete!")
         pass
 
-    def galactic_check(self, ra, dec, dist, mode='centre'):
+    def galactic_check(self, ra, dec, dist, mode='corner'):
         """Check if any of a square with side length `dist` and a centre coordinate (ra,dec) has
         any intersection with the galactic plane (|b| <= 19) or the LMC/SMC
 
