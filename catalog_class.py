@@ -284,9 +284,10 @@ class SkyCatalogue():
         all_stars['min_dec'] = all_stars['dec'] - all_stars['radius']
 
         # ra, dec, and radius in pixels
-        all_stars['ra_pix'] = np.round((all_stars['ra'] - coords[0]) * self.dim).astype(int) - 1
-        all_stars['dec_pix'] = np.round((all_stars['dec'] - coords[2]) * self.dim).astype(int) - 1
-        all_stars['rad_pix'] = np.ceil(all_stars['radius'] * self.dim).astype(int)
+        pixscale = 0.272 / 3600
+        all_stars['ra_pix'] = np.round((all_stars['ra'] - coords[0]) // pixscale).astype(int)
+        all_stars['dec_pix'] = np.round((all_stars['dec'] - coords[2]) // pixscale).astype(int)
+        all_stars['rad_pix'] = np.ceil(all_stars['radius'] // pixscale).astype(int)
 
         return all_stars
     
@@ -320,7 +321,7 @@ class SkyCatalogue():
     def define_grid(self):
         """Creates gridlines and centers on pixels for the initialized dimension and field of view."""
 
-        self.gridlines = np.arange(0, self.dim+1, (self.fov/3600 * self.dim))
+        self.gridlines = np.arange(0, self.dim+1, self.fov//0.272)
         centers = []
 
         for i in range(len(self.gridlines[:-1])):
