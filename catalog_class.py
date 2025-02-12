@@ -13,7 +13,7 @@ from sklearn.neighbors import KDTree
 
 class SkyCatalogue():
 
-    def __init__(self, bands=('g','r','i','z'), map_dist=1.0, mask_radius=20, fov=45, verbose=False):
+    def __init__(self, bands=('g','r','i','z'), mag_limit=21, map_dist=1.0, mask_radius=20, fov=45, verbose=False):
         """ Initialise the SkyCatalogue object.
 
         Parameters
@@ -36,6 +36,10 @@ class SkyCatalogue():
         self.verboseprint = print if verbose else lambda *a, **k: None
 
         self.bands = bands
+        if mag_limit >= 16:
+            self.mag_limit = mag_limit
+        else:
+            self.mag_limit = 21
         self.map_dist = map_dist
         self.dim = int((3600*4) * self.map_dist)
         self.mask_radius = mask_radius
@@ -157,7 +161,7 @@ class SkyCatalogue():
 
         # run query based on user input
         mags = [f"mag_{b}" for b in self.bands]
-        conditions = [f"({mag}<=21 AND {mag}>=16)" for mag in mags]
+        conditions = [f"({mag}<={self.mag_limit} AND {mag}>=16)" for mag in mags]
         
         query = f"""
             SELECT ra, dec, {", ".join(mags)}
