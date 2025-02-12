@@ -662,8 +662,7 @@ class SkyCatalogue():
         
         self.verboseprint(f"> Done!")
         return dark_catalogue
-    
-    # @timer
+
     def all_sky(self, ra_allsky=0, dec_allsky=-90, sky_dist=10.0, query_dist=2.0, full_sky=False, mode='corner', **kwargs):
         """Loop through the entire sky.
         
