@@ -50,7 +50,7 @@ class SkyCatalogue():
         self.fov = fov
         # amount of pixels corresponding to fov at a 0.262 arcsec per 1 pix scale
         # same as used in LSDR10 brick images
-        self.pixfov = self.fov // 0.262
+        self.pixfov = self.fov // 0.25
         
         # load all masked stars
         self.verboseprint("Loading masked star data....")
@@ -315,12 +315,13 @@ class SkyCatalogue():
         # all_stars['ra_pix'], all_stars['dec_pix'] = w.world_to_array_index_values(np.column_stack([all_stars['ra'], all_stars['dec']]), 0)
         # w.printwcs()
         # print(pixarrays)
-        all_stars['ra_pix'], all_stars['dec_pix'] = pixarrays[1], pixarrays[0]
+        # row, col
+        all_stars['dec_pix'], all_stars['ra_pix'] = pixarrays[0], pixarrays[1]
         # ra, dec, and radius in pixels
 
         all_stars['rad_pix'] = all_stars['radius'] / self.pixscale
 
-        return all_stars
+        return all_stars, w
     
     def seg_map(self, star_data:pd.DataFrame):
         """Creates segementation map of shape (`dim`, `dim`) based on the mask locations and pixel data of `star_data`.
@@ -338,10 +339,11 @@ class SkyCatalogue():
             Value 1 if forbidden, 0 if allowed
         """
 
-        array = np.zeros(self.dim**2, dtype=int)
         # the index of a particular ra / dec in this array is:
         # array[ dec*dim + ra ]
         # "rows" of dec with "columns" of ra
+        array = np.zeros(self.dim**2, dtype=int)
+        
         radec = np.asarray([star_data['dec_pix'],star_data['ra_pix']]).T
         circle_points = self.distance_tree.query_radius(radec, star_data['rad_pix'])
 
@@ -357,7 +359,8 @@ class SkyCatalogue():
 
         # self.pixscale = self.fov // 0.272
         self.gridlines = np.arange(0, self.dim+1, self.pixfov)
-        centers = np.arange(self.pixfov//2, self.dim - (self.pixfov//2), self.pixfov)
+        centers = np.arange(self.pixfov/2, self.dim - (self.pixfov/2) + 1, self.pixfov)
+        # print(centers)
         # centers = []
 
         # for i in range(len(self.gridlines[:-1])):
@@ -384,22 +387,23 @@ class SkyCatalogue():
         """
 
         dark_regions = []
+        
+        for x, y in zip(self.x_cen, self.y_cen):
+            # x is array of [xcen1, xcen2, xcen3, ... ]
+            # y is array of [ycen1, ycen1, ycen1, ... ]
+            
+            for ra_center, dec_center in zip(x, y):
+                ra_start, ra_end = int(ra_center - self.pixfov/2), int(ra_center + self.pixfov/2)
+                dec_start, dec_end = int(dec_center - self.pixfov/2), int(dec_center + self.pixfov/2)
 
-        # define bounds of each grid square and iterate through
-        for i in range(len(self.gridlines) - 1):
-            for j in range(len(self.gridlines) - 1):
-                x_start, x_end = (self.gridlines[i]).astype(int), (self.gridlines[i + 1]).astype(int)
-                y_start, y_end = (self.gridlines[j]).astype(int), (self.gridlines[j + 1]).astype(int)
-                # check for intersection between grid square and object, accept as dark region if none
-                if np.all(segmap[y_start:y_end, x_start:x_end] == 0):
-                    dark_regions.append([self.x_cen[j, i], self.y_cen[j, i]])
-
-        # convert to transverse coordinates for easier plot handling
+                if np.all(segmap[dec_start:dec_end, ra_start:ra_end] == 0):
+                    dark_regions.append([ra_center, dec_center])
+        
         dr_trans = np.array(dark_regions).transpose()
 
         return dr_trans, dark_regions
 
-    def create_plot(self, array, coords, pix_coords, dr_trans):
+    def create_plot(self, array, coords, dr_trans):
         """Draws a plot of forbidden and allowed grid squares to centre the fov on to obtain a dark position.
         
         Parameters
@@ -428,8 +432,8 @@ class SkyCatalogue():
         ax.set_xticks(positions, x_labels)
         ax.set_yticks(positions, y_labels)    
 
-        plt.vlines(self.gridlines, min(pix_coords[1]), max(pix_coords[1]), color='red', linewidth=1)
-        plt.hlines(self.gridlines, min(pix_coords[0]), max(pix_coords[0]), color= 'red', linewidth=1)
+        plt.vlines(self.gridlines, 0, self.dim, color='red', linewidth=1)
+        plt.hlines(self.gridlines, 0, self.dim, color= 'red', linewidth=1)
 
         plt.plot(dr_trans[0], dr_trans[1], 'rx', markersize=10)
 
@@ -439,13 +443,13 @@ class SkyCatalogue():
 
         return
 
-    def create_data_frame(self, dark_regions, coords):
+    def create_data_frame(self, dark_regions, coords, wcs: WCS):
         """Creates a dataframe of allowed dark region within certain coordinate bounds.
         
         Parameters
         ----------
         dark_regions : `list`
-            List of coordinates (ra,dec) that represent centres of grid squares of allowed dark regions
+            2D List of coordinates (ra,dec) that represent centres of grid squares of allowed dark regions
         coords : `list`
             List of bounds of the selected region in order ra_min, ra_max, dec_min, dec
 
@@ -458,6 +462,7 @@ class SkyCatalogue():
         dark_ra = []
         dark_dec = []
 
+        ra, dec = wcs.array_index_to_world_values(dark_regions)
         # converting pixels back to sky coordinates
         for i in dark_regions:
             ra = i[0] / (self.dim) + coords[0]
@@ -540,7 +545,7 @@ class SkyCatalogue():
         self.verboseprint(">>>> Combining mask and queried stars...")
         all_stars = self.combine_data(catalog_df, coords)
         self.verboseprint(">>>> Calculating pixel values for stars....")
-        all_stars = self.create_pixel_columns(all_stars, coords)
+        all_stars, wcs = self.create_pixel_columns(all_stars, coords)
 
         self.verboseprint(">>>> Creating segmentation map...")
         segmentation_map = self.seg_map(all_stars)
@@ -550,11 +555,10 @@ class SkyCatalogue():
 
         if plot_image:
             self.verboseprint(">>>> Plotting dark regions...")
-            pix_coords = [all_stars['ra_pix'], all_stars['dec_pix'], all_stars['rad_pix']]
-            self.create_plot(segmentation_map, coords, pix_coords, dr_trans)
+            self.create_plot(segmentation_map, coords, dr_trans)
 
         self.verboseprint(">>>> Converting dark regions to coordinates...")
-        dark_catalogue = self.create_data_frame(dark_regions, coords)
+        dark_catalogue = self.create_data_frame(dark_regions, coords, wcs)
         
         self.verboseprint(">>>> Finding maximum extent of stars beyond the degree-square bounds...")
         overlap = self.find_overlapping_extent(all_stars)
