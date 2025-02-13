@@ -2,6 +2,7 @@
 import matplotlib.pyplot as plt
 from astropy.io import fits as fits
 from astropy.coordinates import SkyCoord
+from astropy.wcs import WCS
 
 import pkg_resources
 pkg_resources.require("numpy==1.26.3")
@@ -41,9 +42,15 @@ class SkyCatalogue():
         else:
             self.mag_limit = 21
         self.map_dist = map_dist
+        # self.dim = int(self.map_dist * (3600/0.262))
         self.dim = int((3600*4) * self.map_dist)
+        # degrees per pixel
+        self.pixscale = 1 / 14400
         self.mask_radius = mask_radius
         self.fov = fov
+        # amount of pixels corresponding to fov at a 0.262 arcsec per 1 pix scale
+        # same as used in LSDR10 brick images
+        self.pixfov = self.fov // 0.262
         
         # load all masked stars
         self.verboseprint("Loading masked star data....")
@@ -269,6 +276,8 @@ class SkyCatalogue():
         ----------
         all_stars : `pd.DataFrame`
             Combined dataframe of all stars with associated mask data with columns ra, dec, radius
+        coords : `list`
+            List of bounds of the selected region in order ra_min, ra_max, dec_min, dec_max
 
         Returns
         -------
@@ -283,11 +292,33 @@ class SkyCatalogue():
         all_stars['max_dec'] = all_stars['dec'] + all_stars['radius']
         all_stars['min_dec'] = all_stars['dec'] - all_stars['radius']
 
+        # create wcs cornered/centered on that ra/dec
+        
+        wcs_dict = {
+            "CTYPE1": "RA---TAN",
+            "CUNIT1": 'deg',
+            'CDELT1': self.pixscale,
+            'CRPIX1': 0,
+            "CRVAL1": coords[0],
+            "NAXIS1": self.dim,
+            "CTYPE2": "DEC--TAN",
+            "CUNIT2": 'deg',
+            'CDELT2': self.pixscale,
+            'CRPIX2': 0,
+            "CRVAL2": coords[2],
+            "NAXIS2": self.dim
+        }
+        
+        w = WCS(wcs_dict)
+        # pix_arrays = w.wcs_world2pix(all_stars['ra'], all_stars['dec'], 0)
+        pixarrays = w.world_to_array_index_values(all_stars['ra'], all_stars['dec'])
+        # all_stars['ra_pix'], all_stars['dec_pix'] = w.world_to_array_index_values(np.column_stack([all_stars['ra'], all_stars['dec']]), 0)
+        # w.printwcs()
+        # print(pixarrays)
+        all_stars['ra_pix'], all_stars['dec_pix'] = pixarrays[1], pixarrays[0]
         # ra, dec, and radius in pixels
-        pixscale = 0.272 / 3600
-        all_stars['ra_pix'] = np.round((all_stars['ra'] - coords[0]) // pixscale).astype(int)
-        all_stars['dec_pix'] = np.round((all_stars['dec'] - coords[2]) // pixscale).astype(int)
-        all_stars['rad_pix'] = np.ceil(all_stars['radius'] // pixscale).astype(int)
+
+        all_stars['rad_pix'] = all_stars['radius'] / self.pixscale
 
         return all_stars
     
@@ -308,6 +339,9 @@ class SkyCatalogue():
         """
 
         array = np.zeros(self.dim**2, dtype=int)
+        # the index of a particular ra / dec in this array is:
+        # array[ dec*dim + ra ]
+        # "rows" of dec with "columns" of ra
         radec = np.asarray([star_data['dec_pix'],star_data['ra_pix']]).T
         circle_points = self.distance_tree.query_radius(radec, star_data['rad_pix'])
 
@@ -321,11 +355,13 @@ class SkyCatalogue():
     def define_grid(self):
         """Creates gridlines and centers on pixels for the initialized dimension and field of view."""
 
-        self.gridlines = np.arange(0, self.dim+1, self.fov//0.272)
-        centers = []
+        # self.pixscale = self.fov // 0.272
+        self.gridlines = np.arange(0, self.dim+1, self.pixfov)
+        centers = np.arange(self.pixfov//2, self.dim - (self.pixfov//2), self.pixfov)
+        # centers = []
 
-        for i in range(len(self.gridlines[:-1])):
-            centers.append(int((self.gridlines[i] + self.gridlines[i+1])/2 + 0.5))
+        # for i in range(len(self.gridlines[:-1])):
+        #     centers.append(int((self.gridlines[i] + self.gridlines[i+1])/2 + 0.5))
 
         self.x_cen, self.y_cen = np.meshgrid(centers, centers)
         return
