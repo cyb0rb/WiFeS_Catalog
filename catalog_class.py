@@ -462,7 +462,7 @@ class SkyCatalogue():
         dark_ra = []
         dark_dec = []
 
-        #ra, dec = wcs.array_index_to_world_values(dark_regions)
+        # ra, dec = wcs.array_index_to_world_values(dark_regions)
         # converting pixels back to sky coordinates
         for i in dark_regions:
             ra = i[0] / (self.dim) + coords[0]
