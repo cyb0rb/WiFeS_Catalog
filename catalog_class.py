@@ -12,10 +12,10 @@ from dl import queryClient as qc
 import pandas as pd
 from sklearn.neighbors import KDTree
 
-class SkyCatalogue():
+class DarkSkyPAL():
 
     def __init__(self, bands=('g','r','i','z'), mag_limit=21, map_dist=1.0, mask_radius=20, fov=45, verbose=False):
-        """ Initialise the SkyCatalogue object.
+        """ Initialise the DarkSkyPAL object.
 
         Parameters
         ----------
@@ -270,7 +270,9 @@ class SkyCatalogue():
         return all_stars
     
     def create_pixel_columns(self, all_stars:pd.DataFrame, coords):
-        """Converts coorindate data into a pixel grid and calculates pixel values of all objects.
+        """Converts coordinate data into a pixel grid and calculates pixel values of all objects.
+        
+        **NOTE:** This function has major bugs
 
         Parameters
         ----------
@@ -708,7 +710,7 @@ class SkyCatalogue():
         self.verboseprint(f"> Done!")
         return dark_catalogue
 
-    def all_sky(self, ra_allsky=0, dec_allsky=-90, sky_dist=10.0, query_dist=2.0, full_sky=False, mode='corner', **kwargs):
+    def multi_query_catalogue(self, ra_allsky=0, dec_allsky=-90, sky_dist=10.0, query_dist=2.0, full_sky=False, mode='corner', **kwargs):
         """Loop through the entire sky.
         
         Parameters
@@ -741,7 +743,7 @@ class SkyCatalogue():
         # make sure sky distance is larger than query distance for consistency
         if query_dist > sky_dist:
             print(f"Your query distance ({query_dist}) is larger than the sky distance ({sky_dist}) you're trying to cover!")
-            print(f"Either reduce your query distance, or use the SkyCatalogue.create_catalogue() method instead.")
+            print(f"Either reduce your query distance, or use the DarkSkyPAL.create_catalogue() method instead.")
             return
         
         # use corner mode by default
@@ -794,5 +796,5 @@ class SkyCatalogue():
         
 if __name__=="__main__": 
 
-    catalog_g_band = SkyCatalogue(all_bands=False)
+    catalog_g_band = DarkSkyPAL(all_bands=False)
     catalog_g_band.all_sky(query_dist=2.0, min_ra=212, max_ra=216, min_dec=16, max_dec=20)
