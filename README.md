@@ -7,5 +7,5 @@ Reliability of produced sky positions decreases significantly as declination app
 
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-ANU SSO Summer Intership Project 2025
+ANU SSO Summer Intership Project 2025  
 Alannah Falvo, Cyrus Worley, Vernica Mehta
